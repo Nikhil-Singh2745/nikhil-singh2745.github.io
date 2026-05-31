@@ -148,6 +148,11 @@ const tags = Array.from(
     cursor: pointer;
     transition: all 160ms var(--ease-out-expo);
   }
+  @media (max-width: 48rem) {
+    .chip {
+      padding: 0.4rem 0.8rem;
+    }
+  }
   .chip:hover {
     color: var(--color-ink);
     border-color: var(--color-ink);
@@ -160,7 +165,7 @@ const tags = Array.from(
 
   .corkboard__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 4rem 3rem;
     padding-block: 3.5rem 1rem;
     align-items: start;

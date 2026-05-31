@@ -13,6 +13,13 @@
   margin-inline: auto;
 }
 
+@media (max-width: 48rem) {
+  .prose {
+    font-size: 1.125rem;
+    padding-inline: var(--gutter);
+  }
+}
+
 .prose > * + * {
   margin-top: 1.4em;
 }
@@ -31,6 +38,12 @@
   position: relative;
   padding-top: 1.5rem;
   border-top: 1px solid var(--color-hairline);
+}
+
+@media (max-width: 48rem) {
+  .prose h2 {
+    padding-right: 2.5rem;
+  }
 }
 
 .prose h2::before {
@@ -210,12 +223,20 @@
   bottom: -0.25em;
 }
 
-/* table */
 .prose table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.95em;
   margin: 1.5em 0;
+}
+
+@media (max-width: 48rem) {
+  .prose table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .prose th,

@@ -255,6 +255,20 @@ const number = String(index + 1).padStart(3, "0");
     filter: drop-shadow(0 2px 1px rgba(10, 10, 10, 0.4));
   }
 
+  @media (max-width: 36rem) {
+    .note {
+      transform: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-shadow: 3px 4px 0 0 var(--color-ink) !important;
+    }
+    .note:hover,
+    .note:focus-within {
+      transform: translateY(-4px) !important;
+      box-shadow: 4px 6px 0 0 var(--color-ink) !important;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .note {
       transition: none;

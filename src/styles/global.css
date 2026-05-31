@@ -62,6 +62,8 @@ body {
   min-height: 100vh;
   line-height: 1.55;
   font-size: 1.0625rem;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 ::selection {
@@ -315,6 +317,12 @@ html.phosphor body::after {
   max-width: 28rem;
   width: calc(100% - 2rem);
   position: relative;
+}
+
+@media (max-width: 30rem) {
+  .kbd-sheet__inner {
+    padding: 1.5rem 2rem;
+  }
 }
 
 .kbd-sheet h2 {
