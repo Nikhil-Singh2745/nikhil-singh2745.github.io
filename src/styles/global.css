@@ -1,0 +1,346 @@
+@import "tailwindcss";
+@import "@fontsource-variable/fraunces/index.css";
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource-variable/jetbrains-mono/index.css";
+@import "@fontsource/caveat/400.css";
+@import "@fontsource/caveat/700.css";
+
+/* ─────────────────────────────────────────────────────────────
+   tokens
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  --color-paper: #faf9f6;
+  --color-ink: #0a0a0a;
+  --color-hairline: #c8c5be;
+  --color-muted: #6b6862;
+  --color-paper-warm: #f4f1ea;
+  --color-inv-paper: #0a0a0a;
+  --color-inv-ink: #faf9f6;
+
+  --font-serif: "Fraunces Variable", "Iowan Old Style", "Apple Garamond", Georgia, serif;
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, monospace;
+  --font-hand: "Caveat", "Marker Felt", cursive;
+
+  --max-reading: 38rem; /* ~608px */
+  --max-shell: 78rem;
+  --gutter: 1.5rem;
+
+  --hairline: 1px;
+  --rule-thick: 2px;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   base
+   ───────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-serif);
+  font-feature-settings: "ss01", "ss02", "ss03", "kern", "liga", "calt";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+  line-height: 1.55;
+  font-size: 1.0625rem;
+}
+
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   utility classes that earn their keep
+   ───────────────────────────────────────────────────────────── */
+.shell {
+  max-width: var(--max-shell);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.reading {
+  max-width: var(--max-reading);
+  margin-inline: auto;
+}
+
+.hairline {
+  background: var(--color-hairline);
+  height: var(--hairline);
+  width: 100%;
+  border: 0;
+}
+
+.hairline-thick {
+  background: var(--color-ink);
+  height: var(--rule-thick);
+  width: 100%;
+  border: 0;
+}
+
+.meta {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "calt", "ss01";
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+}
+
+.hand {
+  font-family: var(--font-hand);
+  font-weight: 400;
+}
+
+.display {
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 144, "wght" 360, "SOFT" 30;
+  line-height: 0.92;
+  letter-spacing: -0.022em;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ornaments
+   ───────────────────────────────────────────────────────────── */
+.ornament {
+  display: block;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-size: 1.5rem;
+  color: var(--color-muted);
+  margin: 3.5rem auto;
+  letter-spacing: 0.4em;
+  padding-left: 0.4em;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   reading progress
+   ───────────────────────────────────────────────────────────── */
+.progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 1px;
+  background: var(--color-ink);
+  width: 0;
+  z-index: 60;
+  pointer-events: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   inspect-mode baseline grid (toggled by `g`)
+   ───────────────────────────────────────────────────────────── */
+html.inspect body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(1.55rem - 1px),
+      rgba(10, 10, 10, 0.18) calc(1.55rem - 1px),
+      rgba(10, 10, 10, 0.18) 1.55rem
+    ),
+    linear-gradient(to right, rgba(10, 10, 10, 0.06) 1px, transparent 1px);
+  background-size: 100% 1.55rem, calc(100% / 12) 100%;
+  z-index: 50;
+}
+
+html.inspect body::before {
+  content: "INSPECT · baseline 1.55rem · 12-col";
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 70;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  padding: 6px 10px;
+  letter-spacing: 0.08em;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   phosphor easter egg — amber CRT
+   ───────────────────────────────────────────────────────────── */
+html.phosphor {
+  --color-paper: #0b0900;
+  --color-ink: #ffae42;
+  --color-hairline: #6a4a10;
+  --color-muted: #aa7a26;
+  --color-paper-warm: #110d00;
+  --color-inv-paper: #ffae42;
+  --color-inv-ink: #0b0900;
+}
+
+html.phosphor body {
+  text-shadow: 0 0 1px currentColor, 0 0 6px rgba(255, 174, 66, 0.35);
+}
+
+html.phosphor body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.22) 2px,
+    rgba(0, 0, 0, 0.22) 3px
+  );
+  z-index: 80;
+  mix-blend-mode: multiply;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   view transitions — a clean clip wipe
+   ───────────────────────────────────────────────────────────── */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 240ms;
+  animation-timing-function: var(--ease-out-expo);
+}
+
+::view-transition-old(root) {
+  animation-name: vt-out;
+}
+
+::view-transition-new(root) {
+  animation-name: vt-in;
+}
+
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    clip-path: inset(100% 0 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   focus
+   ───────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   shortcut sheet (toggled by ?)
+   ───────────────────────────────────────────────────────────── */
+.kbd-sheet {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-paper) 92%, transparent);
+  z-index: 90;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+.kbd-sheet[data-open="true"] {
+  display: flex;
+}
+
+.kbd-sheet__inner {
+  border: 1px solid var(--color-ink);
+  background: var(--color-paper);
+  padding: 2.5rem 3rem;
+  max-width: 28rem;
+  width: calc(100% - 2rem);
+  position: relative;
+}
+
+.kbd-sheet h2 {
+  margin: 0 0 1.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.kbd-sheet dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 1.5rem;
+  row-gap: 0.55rem;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.kbd-sheet dt {
+  font-weight: 600;
+}
+
+.kbd-sheet dd {
+  margin: 0;
+  color: var(--color-muted);
+}

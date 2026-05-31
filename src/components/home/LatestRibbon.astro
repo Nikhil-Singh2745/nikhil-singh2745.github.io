@@ -1,0 +1,157 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { formatEntryDate } from "@/utils/romanNumerals";
+
+interface Props {
+  entries: CollectionEntry<"dumps">[];
+}
+const { entries } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<section class="ribbon">
+  <div class="shell">
+    <header class="ribbon__head">
+      <div class="ribbon__label meta">on the corkboard · most recent</div>
+      <a class="ribbon__all mono" href={`${base}/dumps/`}>see all →</a>
+    </header>
+    <hr class="hairline" />
+
+    <ol class="ribbon__list">
+      {
+        entries.map((e, i) => (
+          <li class="ribbon__item">
+            <a href={`${base}/dumps/${e.id}/`} class="ribbon__link">
+              <span class="ribbon__num">{String(i + 1).padStart(2, "0")}</span>
+              <div class="ribbon__body">
+                <h3 class="ribbon__title">{e.data.title}</h3>
+                {e.data.subtitle && (
+                  <p class="ribbon__sub">{e.data.subtitle}</p>
+                )}
+                <p class="ribbon__summary">{e.data.summary}</p>
+              </div>
+              <div class="ribbon__meta">
+                <time class="mono">{formatEntryDate(e.data.date)}</time>
+                {e.data.tags.length > 0 && (
+                  <span class="ribbon__tags">
+                    {e.data.tags.slice(0, 3).map((t) => (
+                      <span class="ribbon__tag">{t}</span>
+                    ))}
+                  </span>
+                )}
+              </div>
+            </a>
+            <hr class="hairline" />
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</section>
+
+<style>
+  .ribbon {
+    padding-block: 1rem 4rem;
+  }
+  .ribbon__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-block: 1rem 0.75rem;
+  }
+  .ribbon__all {
+    color: var(--color-muted);
+    transition: color 180ms var(--ease-out-expo);
+  }
+  .ribbon__all:hover {
+    color: var(--color-ink);
+  }
+  .ribbon__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .ribbon__link {
+    display: grid;
+    grid-template-columns: 4rem 1fr 14rem;
+    gap: 1.5rem;
+    padding-block: 1.5rem;
+    align-items: start;
+  }
+  .ribbon__num {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 220;
+    font-size: 2rem;
+    line-height: 1;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .ribbon__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 96, "wght" 540;
+    font-size: clamp(1.25rem, 2.2vw, 1.6rem);
+    line-height: 1.18;
+    letter-spacing: -0.012em;
+    margin: 0;
+    color: var(--color-ink);
+    transition: text-decoration-color 180ms;
+  }
+  .ribbon__sub {
+    margin: 0.35rem 0 0;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--color-muted);
+  }
+  .ribbon__summary {
+    margin: 0.65rem 0 0;
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--color-ink);
+    max-width: 56ch;
+  }
+  .ribbon__meta {
+    text-align: right;
+    display: grid;
+    gap: 0.55rem;
+    justify-items: end;
+    align-content: start;
+    padding-top: 0.4rem;
+  }
+  .ribbon__tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    justify-content: flex-end;
+  }
+  .ribbon__tag {
+    font-family: var(--font-sans);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    border: 1px solid var(--color-hairline);
+    padding: 0.1rem 0.45rem;
+  }
+  .ribbon__link:hover .ribbon__title {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+
+  @media (max-width: 56rem) {
+    .ribbon__link {
+      grid-template-columns: 3rem 1fr;
+      gap: 1rem;
+    }
+    .ribbon__meta {
+      grid-column: 2;
+      text-align: left;
+      justify-items: start;
+    }
+    .ribbon__tags {
+      justify-content: flex-start;
+    }
+  }
+</style>

@@ -1,0 +1,181 @@
+---
+import { toRoman } from "@/utils/romanNumerals";
+
+interface Props {
+  issueNumber: number;
+  asOfDate: Date;
+}
+
+const { issueNumber, asOfDate } = Astro.props;
+const monthNames = [
+  "JANUARY",
+  "FEBRUARY",
+  "MARCH",
+  "APRIL",
+  "MAY",
+  "JUNE",
+  "JULY",
+  "AUGUST",
+  "SEPTEMBER",
+  "OCTOBER",
+  "NOVEMBER",
+  "DECEMBER",
+];
+const issue = `Nº ${String(issueNumber).padStart(3, "0")}`;
+const dateStr = `${monthNames[asOfDate.getUTCMonth()]} · ${toRoman(asOfDate.getUTCFullYear())}`;
+---
+
+<section class="cover">
+  <div class="shell cover__shell">
+    <header class="cover__upper">
+      <div class="cover__meta-l mono">{issue}</div>
+      <div class="cover__meta-c meta">
+        a notebook of low-level notes
+      </div>
+      <div class="cover__meta-r mono">{dateStr}</div>
+    </header>
+
+    <hr class="hairline-thick cover__rule" />
+
+    <h1 class="cover__title">
+      <span class="cover__word cover__word--c">core<span class="cover__soft">·</span></span><span
+        class="cover__word cover__word--d">dump</span>
+    </h1>
+
+    <hr class="hairline-thick" />
+
+    <div class="cover__lower">
+      <div class="cover__statement">
+        <span class="cover__statement-mark">¶</span>
+        a writing surface for systems, C++, and low-latency
+        infrastructure: measurements over opinions, specs over
+        slides. no schedule. no person.
+      </div>
+
+      <dl class="cover__leger">
+        <div>
+          <dt class="meta">filed under</dt>
+          <dd class="mono">systems · c++ · perf · networking · os</dd>
+        </div>
+        <div>
+          <dt class="meta">format</dt>
+          <dd class="mono">long-form · irregular · hand-set</dd>
+        </div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<style>
+  .cover {
+    padding-block: 3rem 5rem;
+  }
+  .cover__shell {
+    display: grid;
+    gap: 0;
+  }
+  .cover__upper {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    align-items: end;
+    padding-bottom: 0.75rem;
+  }
+  .cover__meta-l {
+    text-align: left;
+    color: var(--color-muted);
+  }
+  .cover__meta-c {
+    text-align: center;
+  }
+  .cover__meta-r {
+    text-align: right;
+    color: var(--color-muted);
+  }
+  .cover__rule {
+    margin: 0;
+  }
+  .cover__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 300, "SOFT" 30;
+    font-size: clamp(4.5rem, 18vw, 16rem);
+    line-height: 0.86;
+    letter-spacing: -0.04em;
+    margin: 0;
+    padding-block: 2.5rem 2.25rem;
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: baseline;
+    flex-wrap: nowrap;
+    color: var(--color-ink);
+  }
+  .cover__word--c {
+    font-variation-settings: "opsz" 144, "wght" 280, "SOFT" 80;
+    font-style: italic;
+  }
+  .cover__word--d {
+    font-variation-settings: "opsz" 144, "wght" 720, "SOFT" 0;
+  }
+  .cover__soft {
+    color: var(--color-muted);
+    font-style: normal;
+    font-variation-settings: "opsz" 144, "wght" 200;
+    margin: 0 0.05em;
+  }
+  .cover__lower {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 3rem;
+    padding-block: 2rem 0;
+  }
+  .cover__statement {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 96, "wght" 380, "SOFT" 0;
+    font-style: italic;
+    font-size: clamp(1.1rem, 1.6vw, 1.45rem);
+    line-height: 1.45;
+    max-width: 36ch;
+    color: var(--color-ink);
+  }
+  .cover__statement-mark {
+    color: var(--color-muted);
+    font-style: normal;
+    margin-right: 0.25rem;
+  }
+  .cover__leger {
+    display: grid;
+    gap: 0.85rem;
+    margin: 0;
+    align-self: end;
+    justify-self: end;
+    text-align: right;
+  }
+  .cover__leger div {
+    display: grid;
+    gap: 0.15rem;
+  }
+  .cover__leger dt {
+    margin: 0;
+  }
+  .cover__leger dd {
+    margin: 0;
+    color: var(--color-ink);
+  }
+
+  @media (max-width: 56rem) {
+    .cover__lower {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
+    .cover__leger {
+      justify-self: start;
+      text-align: left;
+    }
+    .cover__upper {
+      grid-template-columns: 1fr 1fr;
+    }
+    .cover__meta-c {
+      display: none;
+    }
+  }
+</style>

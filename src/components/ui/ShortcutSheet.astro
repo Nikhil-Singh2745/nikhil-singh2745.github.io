@@ -1,0 +1,45 @@
+---
+---
+
+<div class="kbd-sheet" id="kbd-sheet" data-open="false" role="dialog" aria-label="keyboard shortcuts" aria-modal="true">
+  <div class="kbd-sheet__inner">
+    <h2>keyboard shortcuts</h2>
+    <dl>
+      <dt>g</dt>
+      <dd>toggle baseline grid (inspect mode)</dd>
+      <dt>?</dt>
+      <dd>this sheet</dd>
+      <dt>esc</dt>
+      <dd>close</dd>
+      <dt>↑↑↓↓←→←→ba</dt>
+      <dd>phosphor mode</dd>
+    </dl>
+    <p class="kbd-hint">click anywhere to dismiss</p>
+  </div>
+</div>
+
+<script>
+  const sheet = document.getElementById("kbd-sheet");
+  if (sheet) {
+    sheet.addEventListener("click", () => sheet.setAttribute("data-open", "false"));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") sheet.setAttribute("data-open", "false");
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        e.preventDefault();
+        const open = sheet.getAttribute("data-open") === "true";
+        sheet.setAttribute("data-open", String(!open));
+      }
+    });
+  }
+</script>
+
+<style>
+  .kbd-hint {
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--color-muted);
+  }
+</style>

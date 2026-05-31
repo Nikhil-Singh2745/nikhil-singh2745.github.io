@@ -1,0 +1,432 @@
+/* ─────────────────────────────────────────────────────────────
+   prose — entry typography
+   ───────────────────────────────────────────────────────────── */
+
+.prose {
+  --leading: 1.62;
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 24, "wght" 380, "SOFT" 30;
+  font-size: 1.1875rem;
+  line-height: var(--leading);
+  color: var(--color-ink);
+  max-width: var(--max-reading);
+  margin-inline: auto;
+}
+
+.prose > * + * {
+  margin-top: 1.4em;
+}
+
+.prose h2,
+.prose h3 {
+  font-variation-settings: "opsz" 96, "wght" 620, "SOFT" 0;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+}
+
+.prose h2 {
+  font-size: 2rem;
+  margin-top: 3rem;
+  margin-bottom: 0.8rem;
+  position: relative;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-hairline);
+}
+
+.prose h2::before {
+  content: counter(h2-counter, decimal-leading-zero);
+  counter-increment: h2-counter;
+  position: absolute;
+  top: 1.4rem;
+  right: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.prose {
+  counter-reset: h2-counter;
+}
+
+.prose h3 {
+  font-size: 1.3125rem;
+  margin-top: 2.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.prose p {
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+.prose strong {
+  font-variation-settings: "opsz" 24, "wght" 640, "SOFT" 0;
+}
+
+.prose em {
+  font-style: italic;
+  font-variation-settings: "opsz" 24, "wght" 400, "SOFT" 0;
+}
+
+.prose a {
+  color: var(--color-ink);
+  text-decoration: none;
+  background-image: linear-gradient(to top, var(--color-ink) 1px, transparent 1px);
+  background-position: 0 96%;
+  background-repeat: repeat-x;
+  background-size: 100% 1px;
+  padding-bottom: 1px;
+  transition: background-size 180ms var(--ease-out-expo),
+    color 180ms var(--ease-out-expo);
+}
+
+.prose a:hover {
+  background-size: 100% 100%;
+  color: var(--color-paper);
+}
+
+/* lists */
+.prose ul,
+.prose ol {
+  padding-left: 0;
+  list-style: none;
+}
+
+.prose ul li,
+.prose ol li {
+  position: relative;
+  padding-left: 1.8rem;
+}
+
+.prose ul li + li,
+.prose ol li + li {
+  margin-top: 0.5rem;
+}
+
+.prose ul li::before {
+  content: "-";
+  position: absolute;
+  left: 0;
+  color: var(--color-muted);
+}
+
+.prose ol {
+  counter-reset: olc;
+}
+
+.prose ol li {
+  counter-increment: olc;
+}
+
+.prose ol li::before {
+  content: counter(olc, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: var(--color-muted);
+  top: 0.3em;
+}
+
+/* blockquote */
+.prose blockquote {
+  border-left: 2px solid var(--color-ink);
+  padding-left: 1.25rem;
+  margin-left: 0;
+  font-style: italic;
+  color: var(--color-ink);
+}
+
+/* inline code */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-paper-warm);
+  padding: 0.1em 0.4em;
+  border-radius: 2px;
+  border: 1px solid var(--color-hairline);
+}
+
+/* code block — inverted */
+.prose pre {
+  background: var(--color-inv-paper);
+  color: var(--color-inv-ink);
+  padding: 1.5rem 1.5rem;
+  overflow-x: auto;
+  margin-inline: calc(-1 * var(--gutter));
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  position: relative;
+  border-top: 1px solid var(--color-ink);
+  border-bottom: 1px solid var(--color-ink);
+}
+
+@media (min-width: 48rem) {
+  .prose pre {
+    margin-inline: 0;
+  }
+}
+
+.prose pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* prose hr → ornament */
+.prose hr {
+  border: 0;
+  margin: 3rem auto;
+  text-align: center;
+  height: auto;
+}
+
+.prose hr::after {
+  content: "❡";
+  display: block;
+  font-family: var(--font-serif);
+  color: var(--color-muted);
+  font-size: 1.25rem;
+}
+
+/* sup / sub */
+.prose sup,
+.prose sub {
+  font-size: 0.7em;
+  vertical-align: baseline;
+  position: relative;
+}
+
+.prose sup {
+  top: -0.5em;
+}
+
+.prose sub {
+  bottom: -0.25em;
+}
+
+/* table */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+  margin: 1.5em 0;
+}
+
+.prose th,
+.prose td {
+  padding: 0.55em 0.75em;
+  text-align: left;
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.prose th {
+  border-bottom: 1px solid var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.prose tbody td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* drop cap */
+.prose .dropcap {
+  float: left;
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 144, "wght" 700, "SOFT" 0;
+  font-size: 5.2em;
+  line-height: 0.82;
+  padding-right: 0.08em;
+  padding-top: 0.1em;
+  margin-right: 0.04em;
+  color: var(--color-ink);
+}
+
+/* pull quote */
+.prose .pullquote {
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 96, "wght" 360, "SOFT" 0;
+  font-style: italic;
+  font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+  line-height: 1.2;
+  text-align: center;
+  margin: 3rem 0;
+  padding: 0 1rem;
+  letter-spacing: -0.01em;
+}
+
+.prose .pullquote::before {
+  content: "“";
+  font-size: 2.2em;
+  line-height: 0;
+  vertical-align: -0.36em;
+  display: inline-block;
+  margin-right: 0.04em;
+  color: var(--color-muted);
+}
+
+.prose .pullquote::after {
+  content: "”";
+  font-size: 2.2em;
+  line-height: 0;
+  vertical-align: -0.36em;
+  display: inline-block;
+  margin-left: 0.04em;
+  color: var(--color-muted);
+}
+
+.prose .pullquote-cite {
+  display: block;
+  font-style: normal;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-top: 0.8rem;
+}
+
+.prose .pullquote-cite::before {
+  content: "- ";
+}
+
+/* aside (call-out) */
+.prose .aside {
+  border-top: 2px solid var(--color-ink);
+  border-bottom: 1px solid var(--color-hairline);
+  padding: 1.25rem 0 1rem;
+  font-size: 0.95em;
+  position: relative;
+}
+
+.prose .aside-label {
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-muted);
+  display: block;
+  margin-bottom: 0.6rem;
+}
+
+/* spec chip */
+.prose .spec {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.75em;
+  border: 1px solid var(--color-ink);
+  padding: 0.05em 0.45em;
+  letter-spacing: 0.04em;
+  vertical-align: 0.08em;
+  margin: 0 0.1em;
+  background: transparent;
+}
+
+.prose .spec:hover {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+/* footnote ref */
+.prose .fn-ref {
+  font-family: var(--font-mono);
+  font-size: 0.65em;
+  vertical-align: super;
+  text-decoration: none;
+  background: none;
+  padding: 0 0.05em;
+}
+
+.prose .fn-ref::before {
+  content: "[";
+}
+.prose .fn-ref::after {
+  content: "]";
+}
+
+/* diagram caption */
+.prose .diagram {
+  margin: 2.5rem 0;
+  border-top: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-hairline);
+  padding: 1.25rem 0 1rem;
+}
+
+.prose .diagram-caption {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-top: 0.85rem;
+  text-align: center;
+}
+
+/* marginalia */
+.prose .marginalia {
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+  border-left: 1px solid var(--color-hairline);
+  padding-left: 0.85rem;
+  margin: 1.5em 0;
+}
+
+@media (min-width: 80rem) {
+  .prose .marginalia {
+    float: right;
+    width: 14rem;
+    margin-right: -16rem;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    border-left: 0;
+    border-top: 1px solid var(--color-hairline);
+    padding-left: 0;
+    padding-top: 0.5rem;
+  }
+}
+
+/* footnotes block */
+.prose .footnotes {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-ink);
+}
+
+.prose .footnotes-title {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-muted);
+  margin-bottom: 1rem;
+}
+
+.prose .footnote {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  display: grid;
+  grid-template-columns: 2.5rem 1fr;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.prose .footnote-id {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  padding-top: 0.15rem;
+}

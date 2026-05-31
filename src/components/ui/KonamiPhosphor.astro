@@ -1,0 +1,55 @@
+---
+---
+
+<script>
+  const SEQ = [
+    "ArrowUp",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowLeft",
+    "ArrowRight",
+    "b",
+    "a",
+  ];
+
+  let progress = 0;
+
+  const STORAGE_KEY = "coredump:phosphor";
+  if (localStorage.getItem(STORAGE_KEY) === "1") {
+    document.documentElement.classList.add("phosphor");
+  }
+
+  document.addEventListener("keydown", (e) => {
+    const expected = SEQ[progress];
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (key === expected) {
+      progress++;
+      if (progress === SEQ.length) {
+        progress = 0;
+        const root = document.documentElement;
+        root.classList.toggle("phosphor");
+        const on = root.classList.contains("phosphor");
+        if (on) {
+          localStorage.setItem(STORAGE_KEY, "1");
+        } else {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      }
+    } else {
+      progress = key === SEQ[0] ? 1 : 0;
+    }
+  });
+
+  console.log(
+    "%ccoredump %c· low-level notes",
+    "font: 600 14px ui-monospace, monospace; color: #0a0a0a;",
+    "font: italic 12px ui-monospace, monospace; color: #6b6862;",
+  );
+  console.log(
+    "%cpress ? for shortcuts",
+    "font: 10px ui-monospace, monospace; color: #6b6862;",
+  );
+</script>

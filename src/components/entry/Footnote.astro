@@ -1,0 +1,7 @@
+---
+interface Props {
+  id: string;
+}
+const { id } = Astro.props;
+---
+<a href={`#fn-${id}`} class="fn-ref" id={`fnref-${id}`} aria-label={`footnote ${id}`}>{id}</a>

@@ -1,0 +1,10 @@
+---
+interface Props {
+  href?: string;
+}
+const { href } = Astro.props;
+const Tag: keyof HTMLElementTagNameMap = href ? "a" : "span";
+---
+<Tag class="spec" href={href} target={href ? "_blank" : undefined} rel={href ? "noopener noreferrer" : undefined}>
+  <slot />
+</Tag>

@@ -1,0 +1,95 @@
+---
+---
+
+<section class="manifest">
+  <div class="shell manifest__shell">
+    <aside class="manifest__side">
+      <div class="meta">§ I · what this is</div>
+    </aside>
+    <div class="manifest__body">
+      <p class="manifest__lede">
+        <span class="manifest__drop">A</span>
+        notebook for the parts of computing that get
+        measured in <em>nanoseconds</em>, <em>cache lines</em>,
+        and <em>cycles per instruction</em>. Entries are long,
+        irregular, and unscheduled, published when an idea is worked through to the
+        point of being defensible.
+      </p>
+
+      <p class="manifest__rest">
+        No author. No about page. No team. No timeline. The text
+        is the artefact; the person who wrote it has been
+        deliberately removed from the page so it can be read on
+        its own terms. <a href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/colophon/`}
+          class="manifest__more">read the colophon →</a>
+      </p>
+    </div>
+  </div>
+
+  <hr class="hairline" />
+</section>
+
+<style>
+  .manifest {
+    padding-block: 1rem 3rem;
+    background: var(--color-paper-warm);
+    border-top: 1px solid var(--color-hairline);
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .manifest__shell {
+    display: grid;
+    grid-template-columns: 12rem 1fr;
+    gap: 3rem;
+    padding-block: 3rem 2.5rem;
+    align-items: start;
+  }
+  .manifest__side {
+    padding-top: 0.3rem;
+  }
+  .manifest__lede {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 24, "wght" 400, "SOFT" 30;
+    font-size: clamp(1.1rem, 1.5vw, 1.35rem);
+    line-height: 1.5;
+    margin: 0;
+    color: var(--color-ink);
+    max-width: 44ch;
+  }
+  .manifest__lede em {
+    font-style: italic;
+    font-variation-settings: "opsz" 24, "wght" 380;
+  }
+  .manifest__drop {
+    float: left;
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 680, "SOFT" 0;
+    font-size: 4.6em;
+    line-height: 0.85;
+    padding-right: 0.12em;
+    padding-top: 0.06em;
+    color: var(--color-ink);
+  }
+  .manifest__rest {
+    margin: 1.4rem 0 0;
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    line-height: 1.55;
+    color: var(--color-muted);
+    max-width: 44ch;
+  }
+  .manifest__more {
+    color: var(--color-ink);
+    border-bottom: 1px solid var(--color-ink);
+  }
+  .manifest__more:hover {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  @media (max-width: 56rem) {
+    .manifest__shell {
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+  }
+</style>

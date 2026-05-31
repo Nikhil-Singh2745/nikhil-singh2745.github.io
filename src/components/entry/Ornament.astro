@@ -1,0 +1,26 @@
+---
+interface Props {
+  kind?: "pilcrow" | "section" | "dots";
+}
+const { kind = "pilcrow" } = Astro.props;
+const glyph = kind === "section" ? "§" : kind === "dots" ? "· · ·" : "❡";
+---
+<hr class="ornament" aria-hidden="true" data-glyph={glyph} />
+
+<style>
+  .ornament {
+    border: 0;
+    background: transparent;
+    height: auto;
+    margin: 3rem 0;
+    text-align: center;
+  }
+  .ornament::after {
+    content: attr(data-glyph);
+    font-family: var(--font-serif);
+    color: var(--color-muted);
+    font-size: 1.5rem;
+    letter-spacing: 0.4em;
+    padding-left: 0.4em;
+  }
+</style>

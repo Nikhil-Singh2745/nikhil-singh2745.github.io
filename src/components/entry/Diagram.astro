@@ -1,0 +1,35 @@
+---
+interface Props {
+  caption?: string;
+  fig?: string | number;
+}
+const { caption, fig } = Astro.props;
+---
+<figure class="diagram">
+  <div class="diagram-body">
+    <slot />
+  </div>
+  {caption && (
+    <figcaption class="diagram-caption">
+      {fig && <span class="diagram-fig">FIG. {fig} · </span>}{caption}
+    </figcaption>
+  )}
+</figure>
+
+<style>
+  .diagram-body {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--color-ink);
+  }
+  .diagram-body :global(svg) {
+    margin-inline: auto;
+  }
+  .diagram-fig {
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+</style>

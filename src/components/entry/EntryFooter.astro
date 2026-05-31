@@ -1,0 +1,145 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { formatEntryDate } from "@/utils/romanNumerals";
+
+interface Props {
+  prev: CollectionEntry<"dumps"> | null;
+  next: CollectionEntry<"dumps"> | null;
+}
+const { prev, next } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<footer class="ef">
+  <div class="shell ef__shell">
+    <div class="reading">
+      <div class="ef__ornament">❡</div>
+      <p class="ef__sign">
+        end of dump. <a class="ef__sign-link" href={`${base}/dumps/`}>back to the corkboard</a>.
+      </p>
+    </div>
+
+    <hr class="hairline ef__rule" />
+
+    <nav class="ef__nav" aria-label="adjacent dumps">
+      <div class="ef__nav-cell ef__nav-cell--prev">
+        {prev ? (
+          <a href={`${base}/dumps/${prev.id}/`}>
+            <span class="meta">← previous</span>
+            <span class="ef__nav-title">{prev.data.title}</span>
+            <time class="mono">{formatEntryDate(prev.data.date)}</time>
+          </a>
+        ) : (
+          <span class="ef__nav-empty">
+            <span class="meta">← previous</span>
+            <span class="ef__nav-title ef__nav-title--empty">- first dump -</span>
+          </span>
+        )}
+      </div>
+      <div class="ef__nav-cell ef__nav-cell--next">
+        {next ? (
+          <a href={`${base}/dumps/${next.id}/`}>
+            <span class="meta">next →</span>
+            <span class="ef__nav-title">{next.data.title}</span>
+            <time class="mono">{formatEntryDate(next.data.date)}</time>
+          </a>
+        ) : (
+          <span class="ef__nav-empty">
+            <span class="meta">next →</span>
+            <span class="ef__nav-title ef__nav-title--empty">- most recent -</span>
+          </span>
+        )}
+      </div>
+    </nav>
+  </div>
+</footer>
+
+<style>
+  .ef {
+    padding-top: 4rem;
+  }
+  .ef__ornament {
+    text-align: center;
+    font-family: var(--font-serif);
+    color: var(--color-muted);
+    font-size: 1.5rem;
+    letter-spacing: 0.5em;
+    padding-left: 0.5em;
+    margin-bottom: 1.5rem;
+  }
+  .ef__sign {
+    text-align: center;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--color-muted);
+    margin: 0 0 3rem;
+  }
+  .ef__sign-link {
+    color: var(--color-ink);
+    border-bottom: 1px solid var(--color-ink);
+  }
+  .ef__sign-link:hover {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+  .ef__rule {
+    margin-bottom: 0;
+  }
+  .ef__nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .ef__nav-cell {
+    padding: 1.5rem 0;
+  }
+  .ef__nav-cell--prev {
+    padding-right: 1.5rem;
+    border-right: 1px solid var(--color-hairline);
+  }
+  .ef__nav-cell--next {
+    padding-left: 1.5rem;
+    text-align: right;
+  }
+  .ef__nav-cell a,
+  .ef__nav-empty {
+    display: grid;
+    gap: 0.4rem;
+  }
+  .ef__nav-title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 96, "wght" 520;
+    font-size: 1.15rem;
+    line-height: 1.25;
+    color: var(--color-ink);
+  }
+  .ef__nav-title--empty {
+    color: var(--color-muted);
+    font-style: italic;
+    font-variation-settings: "opsz" 24, "wght" 360;
+  }
+  .ef__nav-cell time {
+    color: var(--color-muted);
+    font-size: 0.7rem;
+  }
+  .ef__nav-cell a:hover .ef__nav-title {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+
+  @media (max-width: 48rem) {
+    .ef__nav {
+      grid-template-columns: 1fr;
+    }
+    .ef__nav-cell--prev {
+      border-right: 0;
+      border-bottom: 1px solid var(--color-hairline);
+      padding-right: 0;
+    }
+    .ef__nav-cell--next {
+      padding-left: 0;
+      text-align: left;
+    }
+  }
+</style>

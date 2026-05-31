@@ -1,0 +1,57 @@
+---
+import EntryLayout from "@/layouts/EntryLayout.astro";
+import DropCap from "@/components/entry/DropCap.astro";
+import PullQuote from "@/components/entry/PullQuote.astro";
+import Marginalia from "@/components/entry/Marginalia.astro";
+import Aside from "@/components/entry/Aside.astro";
+import Ornament from "@/components/entry/Ornament.astro";
+import Diagram from "@/components/entry/Diagram.astro";
+import Footnote from "@/components/entry/Footnote.astro";
+import Footnotes from "@/components/entry/Footnotes.astro";
+import Spec from "@/components/entry/Spec.astro";
+import CodeBlock from "@/components/entry/CodeBlock.astro";
+import { getCollection, render } from "astro:content";
+import { readingTime } from "@/utils/readingTime";
+
+export async function getStaticPaths() {
+  const dumps = (await getCollection("dumps", ({ data }) => !data.draft)).sort(
+    (a, b) => a.data.date.getTime() - b.data.date.getTime(),
+  );
+  return dumps.map((entry, i) => ({
+    params: { slug: entry.id },
+    props: {
+      entry,
+      index: i + 1,
+      prev: dumps[i - 1] ?? null,
+      next: dumps[i + 1] ?? null,
+    },
+  }));
+}
+
+const { entry, index, prev, next } = Astro.props;
+const { Content } = await render(entry);
+const minutes = readingTime(entry.body ?? "");
+---
+
+<EntryLayout
+  entry={entry}
+  index={index}
+  readingMinutes={minutes}
+  prev={prev}
+  next={next}
+>
+  <Content
+    components={{
+      DropCap,
+      PullQuote,
+      Marginalia,
+      Aside,
+      Ornament,
+      Diagram,
+      Footnote,
+      Footnotes,
+      Spec,
+      CodeBlock,
+    }}
+  />
+</EntryLayout>

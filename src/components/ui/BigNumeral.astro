@@ -1,0 +1,38 @@
+---
+interface Props {
+  n: number | string;
+  label?: string;
+}
+const { n, label } = Astro.props;
+const padded = typeof n === "number" ? String(n).padStart(3, "0") : n;
+---
+
+<div class="bn">
+  <span class="bn__num">{padded}</span>
+  {label && <span class="bn__label">{label}</span>}
+</div>
+
+<style>
+  .bn {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 0.85;
+  }
+  .bn__num {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 180, "SOFT" 0;
+    font-size: clamp(3rem, 8vw, 6.5rem);
+    letter-spacing: -0.04em;
+    color: var(--color-ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .bn__label {
+    font-family: var(--font-sans);
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    margin-top: 0.4rem;
+  }
+</style>

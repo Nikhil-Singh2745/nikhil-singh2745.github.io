@@ -1,0 +1,31 @@
+---
+---
+
+<span class="clock mono" aria-label="current UTC time" data-clock>
+  --:--:-- UTC
+</span>
+
+<script>
+  function pad(n: number) {
+    return String(n).padStart(2, "0");
+  }
+  function update() {
+    const els = document.querySelectorAll<HTMLElement>("[data-clock]");
+    if (els.length === 0) return;
+    const d = new Date();
+    const txt = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+    els.forEach((el) => (el.textContent = txt));
+  }
+  update();
+  setInterval(update, 1000);
+</script>
+
+<style>
+  .clock {
+    color: var(--color-muted);
+    font-feature-settings: "tnum", "calt";
+    font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+  }
+</style>

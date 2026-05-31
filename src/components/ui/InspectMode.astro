@@ -1,0 +1,12 @@
+---
+---
+
+<script>
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target as HTMLElement)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.key === "g" || e.key === "G") {
+      document.documentElement.classList.toggle("inspect");
+    }
+  });
+</script>

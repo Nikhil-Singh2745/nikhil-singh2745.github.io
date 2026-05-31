@@ -1,0 +1,204 @@
+---
+import type { CollectionEntry } from "astro:content";
+import StickyNote from "./StickyNote.astro";
+
+interface Props {
+  entries: CollectionEntry<"dumps">[];
+}
+const { entries } = Astro.props;
+const tags = Array.from(
+  new Set(entries.flatMap((e) => e.data.tags)),
+).sort();
+---
+
+<section class="corkboard">
+  <header class="corkboard__head">
+    <div class="shell corkboard__head-inner">
+      <div>
+        <div class="meta">the corkboard</div>
+        <h1 class="corkboard__title">
+          all dumps <span class="corkboard__count mono">[{entries.length}]</span>
+        </h1>
+        <p class="corkboard__lede">
+          everything filed so far. notes are pinned in no particular
+          order, except that the most recent sits highest. they jitter
+          on rotation because hands aren't rulers.
+        </p>
+      </div>
+
+      {tags.length > 0 && (
+        <div class="corkboard__filter" data-filter-root>
+          <div class="meta">filter</div>
+          <div class="corkboard__chips">
+            <button type="button" class="chip chip--active" data-filter="">
+              all
+            </button>
+            {tags.map((t) => (
+              <button type="button" class="chip" data-filter={t}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+    <hr class="hairline" />
+  </header>
+
+  <div class="shell">
+    {entries.length === 0 ? (
+      <p class="corkboard__empty">
+        the board is clean.
+        <br />
+        <span class="mono">no entries yet</span>
+      </p>
+    ) : (
+      <div class="corkboard__grid" data-board>
+        {entries.map((e, i) => (
+          <div class="corkboard__slot" data-tags={e.data.tags.join(",")}>
+            <StickyNote entry={e} index={i} />
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</section>
+
+<script>
+  const root = document.querySelector<HTMLElement>("[data-filter-root]");
+  if (root) {
+    root.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(
+        "[data-filter]",
+      );
+      if (!btn) return;
+      const tag = btn.dataset.filter ?? "";
+      root.querySelectorAll<HTMLElement>("[data-filter]").forEach((b) =>
+        b.classList.toggle("chip--active", b === btn),
+      );
+      const board = document.querySelector<HTMLElement>("[data-board]");
+      if (!board) return;
+      board.querySelectorAll<HTMLElement>("[data-tags]").forEach((slot) => {
+        const tags = (slot.dataset.tags ?? "").split(",").filter(Boolean);
+        const show = !tag || tags.includes(tag);
+        slot.style.display = show ? "" : "none";
+      });
+    });
+  }
+</script>
+
+<style>
+  .corkboard {
+    padding-block: 2.5rem 4rem;
+  }
+  .corkboard__head-inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2rem;
+    align-items: end;
+    padding-bottom: 1.5rem;
+  }
+  .corkboard__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 280, "SOFT" 30;
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    line-height: 0.95;
+    letter-spacing: -0.025em;
+    margin: 0.4rem 0 0.85rem;
+  }
+  .corkboard__count {
+    color: var(--color-muted);
+    font-size: 0.45em;
+    vertical-align: 0.7em;
+    margin-left: 0.4em;
+  }
+  .corkboard__lede {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--color-muted);
+    max-width: 42ch;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .corkboard__filter {
+    text-align: right;
+    align-self: end;
+  }
+  .corkboard__filter .meta {
+    margin-bottom: 0.6rem;
+  }
+  .corkboard__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: flex-end;
+    max-width: 24rem;
+  }
+  .chip {
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border: 1px solid var(--color-hairline);
+    padding: 0.25rem 0.65rem;
+    color: var(--color-muted);
+    background: var(--color-paper);
+    cursor: pointer;
+    transition: all 160ms var(--ease-out-expo);
+  }
+  .chip:hover {
+    color: var(--color-ink);
+    border-color: var(--color-ink);
+  }
+  .chip--active {
+    background: var(--color-ink);
+    color: var(--color-paper);
+    border-color: var(--color-ink);
+  }
+
+  .corkboard__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 4rem 3rem;
+    padding-block: 3.5rem 1rem;
+    align-items: start;
+    justify-items: center;
+  }
+  .corkboard__slot {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .corkboard__empty {
+    text-align: center;
+    padding: 6rem 0;
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--color-muted);
+    font-size: 1.5rem;
+    line-height: 1.6;
+  }
+  .corkboard__empty .mono {
+    font-style: normal;
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+  }
+
+  @media (max-width: 56rem) {
+    .corkboard__head-inner {
+      grid-template-columns: 1fr;
+    }
+    .corkboard__filter {
+      text-align: left;
+    }
+    .corkboard__chips {
+      justify-content: flex-start;
+    }
+    .corkboard__grid {
+      gap: 3rem 1.5rem;
+    }
+  }
+</style>

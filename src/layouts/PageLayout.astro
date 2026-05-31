@@ -1,0 +1,53 @@
+---
+import "@/styles/global.css";
+import Masthead from "@/components/layout/Masthead.astro";
+import Footer from "@/components/layout/Footer.astro";
+import Hatch from "@/components/ui/Hatch.astro";
+import ShortcutSheet from "@/components/ui/ShortcutSheet.astro";
+import InspectMode from "@/components/ui/InspectMode.astro";
+import KonamiPhosphor from "@/components/ui/KonamiPhosphor.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  pageKind?: "cover" | "dumps" | "entry" | "colophon" | "404";
+}
+
+const {
+  title,
+  description = "coredump: low-level notes. systems, C++, infra, performance.",
+  pageKind = "cover",
+} = Astro.props;
+
+const site = Astro.site?.toString() ?? "";
+const canonical = new URL(Astro.url.pathname, site || "https://coredump.example").toString();
+---
+
+<!doctype html>
+<html lang="en" data-page={pageKind}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light only" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/favicon.svg`} />
+    <meta name="generator" content={Astro.generator} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+  </head>
+  <body>
+    <Hatch />
+    <Masthead />
+    <main>
+      <slot />
+    </main>
+    <Footer />
+    <ShortcutSheet />
+    <InspectMode />
+    <KonamiPhosphor />
+  </body>
+</html>

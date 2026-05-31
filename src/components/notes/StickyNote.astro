@@ -1,0 +1,263 @@
+---
+import { stickyShapeForSlug } from "@/utils/deterministicRandom";
+import { formatShortDate } from "@/utils/romanNumerals";
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  entry: CollectionEntry<"dumps">;
+  index: number;
+}
+const { entry, index } = Astro.props;
+const shape = stickyShapeForSlug(entry.id);
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const href = `${base}/dumps/${entry.id}/`;
+
+const number = String(index + 1).padStart(3, "0");
+---
+
+<article
+  class={`note note--paper-${shape.paper} note--affix-${shape.affix}`}
+  style={`--rot: ${shape.rotation}deg; --jx: ${shape.jitterX}px; --jy: ${shape.jitterY}px; --w: ${shape.width}px;`}
+>
+  {shape.affix === "tape-top" && (
+    <span class="note__affix note__affix--tape-top" aria-hidden="true">
+      <svg viewBox="0 0 100 24" preserveAspectRatio="none">
+        <defs>
+          <pattern id={`tape-stripe-${entry.id}`} patternUnits="userSpaceOnUse" width="6" height="24" patternTransform="rotate(20)">
+            <rect width="3" height="24" fill="currentColor" />
+          </pattern>
+        </defs>
+        <rect width="100" height="24" fill="rgba(10,10,10,0.04)" stroke="rgba(10,10,10,0.18)" stroke-width="0.5" />
+        <rect width="100" height="24" fill={`url(#tape-stripe-${entry.id})`} opacity="0.18" />
+      </svg>
+    </span>
+  )}
+  {shape.affix === "tape-corner" && (
+    <span class={`note__affix note__affix--tape-corner note__affix--${shape.tilt}`} aria-hidden="true">
+      <svg viewBox="0 0 70 22" preserveAspectRatio="none">
+        <rect width="70" height="22" fill="rgba(10,10,10,0.06)" stroke="rgba(10,10,10,0.22)" stroke-width="0.5" />
+      </svg>
+    </span>
+  )}
+  {shape.affix === "pin" && (
+    <span class="note__affix note__affix--pin" aria-hidden="true">
+      <svg viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="6" fill="var(--color-ink)" />
+        <circle cx="10" cy="10" r="2" fill="var(--color-paper)" opacity="0.55" />
+      </svg>
+    </span>
+  )}
+
+  <a href={href} class="note__link">
+    <div class="note__num mono">№ {number}</div>
+    <h3 class="note__title">{entry.data.title}</h3>
+    {entry.data.subtitle && (
+      <p class="note__sub">{entry.data.subtitle}</p>
+    )}
+    <p class="note__summary">{entry.data.summary}</p>
+    <footer class="note__meta">
+      <time class="note__date mono">{formatShortDate(entry.data.date)}</time>
+      {entry.data.tags.length > 0 && (
+        <span class="note__tag">{entry.data.tags[0]}</span>
+      )}
+    </footer>
+  </a>
+</article>
+
+<style>
+  .note {
+    --rot: 0deg;
+    --jx: 0px;
+    --jy: 0px;
+    --w: 280px;
+    position: relative;
+    width: var(--w);
+    max-width: 100%;
+    margin: 0 auto;
+    background: var(--color-paper);
+    border: 1px solid var(--color-ink);
+    color: var(--color-ink);
+    transform: rotate(var(--rot)) translate(var(--jx), var(--jy));
+    transition: transform 240ms var(--ease-out-expo),
+      box-shadow 240ms var(--ease-out-expo);
+    box-shadow: 4px 6px 0 0 var(--color-ink),
+      0 12px 24px -8px rgba(10, 10, 10, 0.18);
+    will-change: transform;
+  }
+
+  .note:hover,
+  .note:focus-within {
+    transform: rotate(0deg) translate(0, -6px);
+    box-shadow: 6px 10px 0 0 var(--color-ink),
+      0 22px 36px -10px rgba(10, 10, 10, 0.22);
+    z-index: 5;
+  }
+
+  .note__link {
+    display: block;
+    padding: 1.5rem 1.25rem 1.1rem;
+    height: 100%;
+  }
+
+  .note__num {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    letter-spacing: 0.08em;
+    margin-bottom: 0.85rem;
+  }
+
+  .note__title {
+    font-family: var(--font-hand);
+    font-weight: 700;
+    font-size: 1.85rem;
+    line-height: 1.05;
+    margin: 0 0 0.4rem;
+    color: var(--color-ink);
+    letter-spacing: -0.005em;
+    word-break: break-word;
+  }
+
+  .note__sub {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--color-muted);
+    margin: 0 0 0.85rem;
+    line-height: 1.35;
+  }
+
+  .note__summary {
+    font-family: var(--font-serif);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0 0 1.5rem;
+    color: var(--color-ink);
+  }
+
+  .note__meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--color-hairline);
+  }
+  .note__date {
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    letter-spacing: 0.04em;
+  }
+  .note__tag {
+    font-family: var(--font-sans);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--color-muted);
+    border: 1px solid var(--color-hairline);
+    padding: 0.1rem 0.45rem;
+  }
+
+  /* paper variants */
+  .note--paper-lined .note__link {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 1.4em,
+      color-mix(in srgb, var(--color-hairline) 60%, transparent) 1.4em,
+      color-mix(in srgb, var(--color-hairline) 60%, transparent) calc(1.4em + 1px)
+    );
+    background-position: 0 2.3rem;
+  }
+
+  .note--paper-graph .note__link {
+    background-image: radial-gradient(
+      color-mix(in srgb, var(--color-hairline) 65%, transparent) 0.5px,
+      transparent 0.5px
+    );
+    background-size: 12px 12px;
+  }
+
+  .note--paper-torn {
+    --tear: polygon(
+      0% 6px,
+      4% 0,
+      9% 5px,
+      14% 0,
+      19% 4px,
+      24% 0,
+      30% 6px,
+      36% 1px,
+      42% 5px,
+      48% 0,
+      54% 4px,
+      60% 0,
+      66% 5px,
+      72% 0,
+      78% 6px,
+      84% 1px,
+      90% 4px,
+      96% 0,
+      100% 6px,
+      100% 100%,
+      0% 100%
+    );
+    clip-path: var(--tear);
+    -webkit-clip-path: var(--tear);
+    border: 0;
+    box-shadow: 4px 6px 0 0 rgba(10, 10, 10, 0.85);
+  }
+  .note--paper-torn .note__link {
+    padding-top: 1.85rem;
+  }
+
+  /* affix variants */
+  .note__affix {
+    position: absolute;
+    display: block;
+    color: var(--color-ink);
+    z-index: 2;
+    pointer-events: none;
+  }
+  .note__affix--tape-top {
+    top: -10px;
+    left: 50%;
+    width: 60%;
+    height: 22px;
+    transform: translateX(-50%) rotate(-2deg);
+  }
+  .note__affix--tape-top svg {
+    width: 100%;
+    height: 100%;
+  }
+  .note__affix--tape-corner {
+    top: -10px;
+    width: 56px;
+    height: 20px;
+  }
+  .note__affix--tape-corner.note__affix--left {
+    left: 12px;
+    transform: rotate(-22deg);
+  }
+  .note__affix--tape-corner.note__affix--right {
+    right: 12px;
+    transform: rotate(22deg);
+  }
+  .note__affix--tape-corner svg {
+    width: 100%;
+    height: 100%;
+  }
+  .note__affix--pin {
+    top: -7px;
+    left: 50%;
+    width: 18px;
+    height: 18px;
+    transform: translateX(-50%);
+    filter: drop-shadow(0 2px 1px rgba(10, 10, 10, 0.4));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .note {
+      transition: none;
+    }
+  }
+</style>

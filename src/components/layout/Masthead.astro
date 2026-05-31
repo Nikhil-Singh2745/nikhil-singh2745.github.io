@@ -1,0 +1,123 @@
+---
+import Clock from "@/components/home/Clock.astro";
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const path = Astro.url.pathname;
+
+const links = [
+  { href: `${base}/`, label: "cover" },
+  { href: `${base}/dumps/`, label: "dumps" },
+  { href: `${base}/colophon/`, label: "colophon" },
+];
+
+function isActive(href: string): boolean {
+  if (href === `${base}/`) return path === "/" || path === `${base}/`;
+  return path === href || path.startsWith(href);
+}
+---
+
+<header class="masthead">
+  <div class="shell masthead__inner">
+    <a href={`${base}/`} class="masthead__brand" aria-label="coredump home">
+      <span class="masthead__brand-mark">§</span>
+      <span class="masthead__brand-text">coredump</span>
+    </a>
+
+    <nav class="masthead__nav" aria-label="primary">
+      {
+        links.map((l) => (
+          <a
+            href={l.href}
+            class={`masthead__link${isActive(l.href) ? " is-active" : ""}`}
+            aria-current={isActive(l.href) ? "page" : undefined}
+          >
+            {l.label}
+          </a>
+        ))
+      }
+    </nav>
+
+    <div class="masthead__meta">
+      <Clock />
+    </div>
+  </div>
+  <hr class="hairline" />
+</header>
+
+<style>
+  .masthead {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: var(--color-paper);
+  }
+  .masthead__inner {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 2rem;
+    padding-block: 1rem 0.85rem;
+  }
+  .masthead__brand {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 540, "SOFT" 0;
+    font-size: 1.5rem;
+    line-height: 1;
+    letter-spacing: -0.01em;
+  }
+  .masthead__brand-mark {
+    font-size: 1.3rem;
+    color: var(--color-muted);
+    font-variation-settings: "opsz" 144, "wght" 400;
+  }
+  .masthead__nav {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .masthead__link {
+    color: var(--color-muted);
+    padding-block: 0.25rem;
+    position: relative;
+    transition: color 180ms var(--ease-out-expo);
+  }
+  .masthead__link:hover,
+  .masthead__link.is-active {
+    color: var(--color-ink);
+  }
+  .masthead__link.is-active::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 -0.85rem 0;
+    height: 2px;
+    background: var(--color-ink);
+  }
+  .masthead__meta {
+    justify-self: end;
+  }
+
+  @media (max-width: 48rem) {
+    .masthead__inner {
+      grid-template-columns: auto 1fr;
+      grid-template-rows: auto auto;
+      gap: 0.5rem 1rem;
+    }
+    .masthead__meta {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .masthead__nav {
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+      gap: 1.2rem;
+      padding-bottom: 0.4rem;
+    }
+  }
+</style>

@@ -1,0 +1,232 @@
+---
+import PageLayout from "@/layouts/PageLayout.astro";
+---
+
+<PageLayout title="colophon - coredump" pageKind="colophon">
+  <section class="colo">
+    <div class="shell">
+      <header class="colo__head">
+        <div class="meta">colophon</div>
+        <h1 class="colo__title">on this notebook.</h1>
+        <p class="colo__lede">
+          a manual for reading <em>coredump</em>. what it is, what it
+          isn't, and what it's set in.
+        </p>
+      </header>
+
+      <hr class="hairline-thick" />
+
+      <div class="colo__body">
+        <section class="colo__section">
+          <pre class="colo__rubric">────[ I · WHAT THIS IS ]────────────────────────────</pre>
+          <p>
+            <em>coredump</em> is a writing surface for technical work that
+            doesn't fit a tweet, a doc, or a slide. it lives at the layer
+            below the framework: cache lines, system calls, kernel
+            interfaces, lock-free state machines, time, latency, and the
+            small physics of computers.
+          </p>
+          <p>
+            entries are long when they need to be, terse when they don't.
+            there is no posting schedule. there is no newsletter, no
+            comment section, no analytics, and no tracking.
+          </p>
+        </section>
+
+        <section class="colo__section">
+          <pre class="colo__rubric">────[ II · NO AUTHOR ]──────────────────────────────</pre>
+          <p>
+            there is no author byline anywhere on this site, and there
+            will not be one. the writing is first-person because all
+            technical writing is, but the person is deliberately
+            scrubbed from the page so the ideas can be argued with on
+            their own terms.
+          </p>
+        </section>
+
+        <section class="colo__section">
+          <pre class="colo__rubric">────[ III · WHAT'S OUT OF SCOPE ]───────────────────</pre>
+          <ul class="colo__list">
+            <li>investment advice or market commentary of any kind</li>
+            <li>trading strategies, instruments, venues, or P&L</li>
+            <li>employment, hiring, or company-specific content</li>
+            <li>discourse, vibes, hot takes, or industry drama</li>
+            <li>tooling reviews where the tool ships in three months</li>
+          </ul>
+        </section>
+
+        <section class="colo__section">
+          <pre class="colo__rubric">────[ IV · TYPE ]───────────────────────────────────</pre>
+          <dl class="colo__typedl">
+            <div>
+              <dt>display + body</dt>
+              <dd>
+                <em>Fraunces</em>: variable opsz / wght / SOFT.
+                set by Undercase Type, released under SIL OFL.
+              </dd>
+            </div>
+            <div>
+              <dt>ui + labels</dt>
+              <dd>
+                <em>Inter</em>: variable, set by Rasmus Andersson, SIL OFL.
+              </dd>
+            </div>
+            <div>
+              <dt>mono / code</dt>
+              <dd>
+                <em>JetBrains Mono</em>: variable, SIL OFL.
+              </dd>
+            </div>
+            <div>
+              <dt>sticky notes</dt>
+              <dd>
+                <em>Caveat</em>: by Pablo Impallari et al., SIL OFL.
+              </dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="colo__section">
+          <pre class="colo__rubric">────[ V · TECHNICAL ]───────────────────────────────</pre>
+          <p>
+            built with <a href="https://astro.build" target="_blank" rel="noopener">Astro</a>;
+            mdx for content, shiki for syntax highlighting (with a
+            black-and-white theme that uses italic and weight instead of
+            colour), and one CSS file. no react. no client framework.
+            the only javascript is the reading-progress bar, the UTC
+            clock, and the keyboard handlers for the inspector and the
+            phosphor mode.
+          </p>
+          <p>
+            page weight target: under 80 kB on a fresh visit, font
+            included, before any entry-specific assets.
+          </p>
+        </section>
+
+        <section class="colo__section">
+          <pre class="colo__rubric">────[ VI · SHORTCUTS ]──────────────────────────────</pre>
+          <dl class="colo__kbd">
+            <div><dt>g</dt><dd>baseline-grid overlay</dd></div>
+            <div><dt>?</dt><dd>shortcut sheet</dd></div>
+            <div><dt>esc</dt><dd>close sheet</dd></div>
+            <div><dt>↑↑↓↓←→←→ba</dt><dd>phosphor mode</dd></div>
+          </dl>
+        </section>
+      </div>
+    </div>
+  </section>
+</PageLayout>
+
+<style>
+  .colo {
+    padding-block: 3rem 4rem;
+  }
+  .colo__head {
+    padding-bottom: 1.25rem;
+  }
+  .colo__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 280, "SOFT" 30;
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    line-height: 0.95;
+    letter-spacing: -0.025em;
+    margin: 0.5rem 0 1rem;
+  }
+  .colo__lede {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1.15rem;
+    color: var(--color-muted);
+    max-width: 44ch;
+    margin: 0;
+  }
+  .colo__body {
+    display: grid;
+    gap: 3.5rem;
+    padding-block: 3rem 0;
+    max-width: 44rem;
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.62;
+  }
+  .colo__section p + p {
+    margin-top: 1em;
+  }
+  .colo__section p {
+    margin: 0;
+  }
+  .colo__rubric {
+    margin: 0 0 1.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--color-muted);
+    letter-spacing: 0.04em;
+    line-height: 1;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .colo__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .colo__list li {
+    position: relative;
+    padding-left: 1.6rem;
+    margin-top: 0.4rem;
+  }
+  .colo__list li::before {
+    content: "-";
+    position: absolute;
+    left: 0;
+    color: var(--color-muted);
+  }
+  .colo__typedl,
+  .colo__kbd {
+    margin: 0;
+    display: grid;
+    gap: 1rem;
+  }
+  .colo__typedl > div,
+  .colo__kbd > div {
+    display: grid;
+    grid-template-columns: 9rem 1fr;
+    gap: 1rem;
+  }
+  .colo__typedl dt,
+  .colo__kbd dt {
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--color-muted);
+    padding-top: 0.3em;
+  }
+  .colo__typedl dd,
+  .colo__kbd dd {
+    margin: 0;
+  }
+  .colo__kbd dt {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    text-transform: none;
+    letter-spacing: 0.02em;
+  }
+  .colo__section a {
+    color: var(--color-ink);
+    border-bottom: 1px solid var(--color-ink);
+  }
+  .colo__section a:hover {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  @media (max-width: 48rem) {
+    .colo__typedl > div,
+    .colo__kbd > div {
+      grid-template-columns: 1fr;
+      gap: 0.2rem;
+    }
+  }
+</style>

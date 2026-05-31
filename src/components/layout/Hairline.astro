@@ -1,0 +1,8 @@
+---
+interface Props {
+  thick?: boolean;
+  class?: string;
+}
+const { thick = false, class: cls = "" } = Astro.props;
+---
+<hr class={`${thick ? "hairline-thick" : "hairline"} ${cls}`} />

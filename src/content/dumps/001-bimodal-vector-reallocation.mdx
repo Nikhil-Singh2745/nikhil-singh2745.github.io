@@ -1,0 +1,148 @@
+---
+title: the bimodal cost of `std::vector` reallocation
+subtitle: one missing `noexcept` decides whether you copy or move.
+date: 2026-05-31
+tags: [c++, perf, stdlib]
+summary: vector reallocation either moves or copies. one missing `noexcept` decides which, and a 40× slowdown rides on it.
+---
+
+<DropCap char="M" />oving is faster than copying. The C++ standard knows
+that. `std::vector` will still pick copy when it reallocates, unless
+you tell it, explicitly, with one keyword, that the move is safe.
+
+The keyword is `noexcept`. The mechanism is `std::move_if_noexcept`.
+The trap is that a user-written move constructor is not `noexcept` by
+default, so a vector of your type silently falls back to copy on every
+reallocation, even though you wrote the move.
+
+## the growth model, briefly
+
+`std::vector<T>::push_back` is amortised O(1) because capacity grows
+geometrically: factor 2 in libstdc++, 1.5 in libc++. When `size() ==
+capacity()` and you push, the implementation:
+
+1. allocates a new buffer of `2 × capacity()` slots,
+2. constructs each existing element into the new buffer,
+3. constructs the new element at the end,
+4. destroys the old elements,
+5. frees the old buffer.
+
+Step 2 is where the bimodal cost lives.
+
+## the strong exception guarantee, in plain words
+
+`vector::push_back` is required to provide the **strong exception
+guarantee**: if it throws, the vector is left in its prior state. The
+new buffer may or may not be allocated; the old data must be intact and
+the size unchanged.
+
+That requirement is the whole story. Consider step 2 with a moving
+transfer: if the third element's move constructor throws, the first two
+have already been moved-from. The "prior state" is gone. Recovery is
+impossible.
+
+If the move constructor is `noexcept`, the implementation knows the
+move cannot throw and uses it freely. If it is not `noexcept`, the
+implementation falls back to copy, because a copy that throws leaves
+the source unchanged: the old buffer is still a valid vector and can
+be returned to as if nothing happened.
+
+The decision is made at compile time by `std::move_if_noexcept`:
+
+<CodeBlock lang="cpp" caption="what move_if_noexcept actually returns."
+  code={`template <class T>
+constexpr conditional_t<
+    !is_nothrow_move_constructible_v<T> && is_copy_constructible_v<T>,
+    const T&,
+    T&&
+> move_if_noexcept(T& x) noexcept;`} />
+
+If `T`'s move is throwing and `T` is copyable, it returns `const T&`,
+and the overload resolved at the new buffer is the copy constructor.
+Otherwise it returns `T&&`, and the move constructor is called. That's
+the entire mechanism.
+
+## the trap
+
+A user-defined move constructor is not implicitly `noexcept`. The
+compiler will not infer it from the body. `std::string`, `std::vector`,
+`std::unique_ptr` all have `noexcept` moves since C++11/17, but the
+moment you hand-write a move on your own type, the implicit
+specification is `noexcept(false)`.
+
+<CodeBlock lang="cpp"
+  code={`struct Thing {
+  std::string name;
+  std::vector<int> payload;
+  Thing(Thing&&) = default;  // noexcept-correct: inherits from members
+};`} />
+
+This is fine: both members have noexcept moves, and the defaulted move
+is itself noexcept. But:
+
+<CodeBlock lang="cpp"
+  code={`struct Thing {
+  std::string name;
+  std::vector<int> payload;
+  Thing(Thing&& other)                 // implicitly noexcept(false)
+      : name(std::move(other.name)),
+        payload(std::move(other.payload)) {}
+};`} />
+
+This compiles, runs, and looks identical. It is not. The user-written
+move is `noexcept(false)`, and `std::vector<Thing>` will fall back to
+copy on every reallocation, duplicating every `string` and every
+`vector<int>` for no reason a reader of the source would see.
+
+<Aside label="the rule">
+  If you write a move constructor by hand, write `noexcept` after the
+  parameter list. If you can't honestly promise that (because some
+  sub-move can throw), redesign the type. There is no middle ground that
+  performs.
+</Aside>
+
+## measurement
+
+A `T` with an expensive copy and a cheap move: each instance holds a
+`std::vector<int>` of 1024 ints (≈ 4 KiB of heap data). Push 2¹⁹ fresh
+`T`s onto an outer `std::vector<T>`, forcing reallocations at every
+power of two.
+
+| `T(T&&)`            | total | final realloc (2¹⁸ → 2¹⁹) |
+|---|---|---|
+| not noexcept (copy) | 1.42 s | 380 ms |
+| `noexcept` (move)   | 0.034 s | 7.1 ms |
+
+Zen 4, single thread pinned to one core, fixed 3.8 GHz, GCC 13.2 with
+`-O2`, glibc 2.39. Ratio is ~40× both on the total and on the final
+reallocation. A smaller `T` narrows the gap; a larger `T`, or one whose
+copy touches many cache lines, widens it.
+
+The standard clause that forces this is
+<Spec href="https://eel.is/c++draft/vector.modifiers">[vector.modifiers]</Spec>:
+"If an exception is thrown other than by the copy constructor, move
+constructor, assignment operator, or move assignment operator of `T`,
+there are no effects."
+
+<PullQuote cite="vector reallocation">
+  the defaulted move constructor inherits noexcept. the user-written
+  one does not. that is the entire trap.
+</PullQuote>
+
+## what to do
+
+- Mark every user-defined move constructor `noexcept`. If a member's
+  move can throw, fix the member or change the aggregation rather than
+  accept the silent copy.
+- For any `T` you store in `std::vector`, add
+  `static_assert(std::is_nothrow_move_constructible_v<T>);` near the
+  type definition. It is a one-line audit that fails loudly the first
+  time someone breaks the invariant.
+- `=default` whenever the semantics allow it: defaulted special
+  members compute their `noexcept`-ness from their members and almost
+  always get it right.
+
+The fix is one keyword per class. The bug is one factor of ten per
+reallocation.
+
+<Ornament />

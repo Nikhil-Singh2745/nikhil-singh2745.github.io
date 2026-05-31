@@ -1,0 +1,44 @@
+---
+interface FootnoteItem {
+  id: string;
+  content: string;
+}
+interface Props {
+  items: FootnoteItem[];
+}
+const { items } = Astro.props;
+---
+
+{items.length > 0 && (
+  <section class="footnotes" aria-label="footnotes">
+    <div class="footnotes-title">footnotes</div>
+    <ol>
+      {items.map((f) => (
+        <li id={`fn-${f.id}`} class="footnote">
+          <span class="footnote-id">[{f.id}]</span>
+          <span>
+            <Fragment set:html={f.content} />
+            <a href={`#fnref-${f.id}`} class="footnote-back" aria-label="back to text">↩</a>
+          </span>
+        </li>
+      ))}
+    </ol>
+  </section>
+)}
+
+<style>
+  ol {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+  .footnote-back {
+    margin-left: 0.4em;
+    color: var(--color-muted);
+    text-decoration: none;
+    font-family: var(--font-mono);
+  }
+  .footnote-back:hover {
+    color: var(--color-ink);
+  }
+</style>
