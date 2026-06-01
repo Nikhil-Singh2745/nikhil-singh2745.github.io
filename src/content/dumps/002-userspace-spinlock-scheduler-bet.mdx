@@ -1,0 +1,174 @@
+---
+title: the userspace spinlock is a bet against the scheduler
+subtitle: spin if you own the core. sleep if you share it. there is no third answer.
+date: 2026-06-01
+tags: [concurrency, linux, perf]
+summary: "a userspace spinlock wins or collapses by ~100×, decided by one fact you rarely control: can the scheduler preempt the lock holder."
+---
+
+<DropCap char="A" /> spinlock in userspace is not a performance trick. It is
+a bet. The wager is that the thread holding the lock will release it
+before the kernel decides to run something else on that core. When the
+bet pays, a spinlock is the fastest mutual exclusion you can write. When
+it loses, throughput does not degrade gracefully: it falls off a cliff,
+and the cliff is roughly a hundred times tall.
+
+The opinion up front, because the nuance only matters after you accept
+the default: **if you do not control which threads run on which cores,
+do not write a spinlock.** Use `std::mutex`. The standard library author
+thought harder about contention than you are going to on a deadline.
+
+## what you are actually betting on
+
+A test-and-set spinlock is three lines and a loop:
+
+<CodeBlock lang="cpp" caption="the whole thing. this is what people mean by 'just spin'."
+  code={`struct Spin {
+  std::atomic<bool> locked{false};
+  void lock() {
+    while (locked.exchange(true, std::memory_order_acquire)) {
+      while (locked.load(std::memory_order_relaxed))  // spin read-only
+        _mm_pause();                                  // hint the core
+    }
+  }
+  void unlock() { locked.store(false, std::memory_order_release); }
+};`} />
+
+Every refinement people add (test-and-test-and-set, the `PAUSE`
+intrinsic, exponential backoff) attacks the same cost: a spinning thread
+burns a CPU doing nothing useful while it waits. The refinements make the
+spin cheaper. None of them change the bet. The bet is that the wait is
+*short*, and "short" is defined entirely by the scheduler, not by you.
+
+Here is the failure, drawn out. Eight threads, eight cores, one lock,
+a critical section of a few nanoseconds. Thread 0 takes the lock. The
+kernel's scheduler, which has never heard of your lock, preempts thread 0
+to run something else: a timer, a kworker, `journald`, anything. Now:
+
+<Diagram caption="one preemption of the lock holder stalls every other core." fig="1">
+{`  core 0  | T0 holds lock |##### PREEMPTED, T0 not running #####| T0 runs, unlock |
+  core 1  |  work | spinspinspinspinspinspinspinspinspinspinspin | acquire |
+  core 2  |  work | spinspinspinspinspinspinspinspinspinspinspin |
+  core 3  |  work | spinspinspinspinspinspinspinspinspinspinspin |
+   ...                                                  ^
+  core 7  |  work | spinspinspinspinspinspinspinspinspinspinspin |
+                    \\__ seven cores burning a full timeslice waiting
+                        for a holder the scheduler chose not to run`}
+</Diagram>
+
+The critical section was nanoseconds. The stall is a scheduler timeslice,
+which on stock Linux is measured in milliseconds. You traded a `ns`
+problem for a `ms` problem because you held a spinlock across a context
+switch you did not know was coming.
+
+## sched_yield does not save you, and makes it worse
+
+The instinct is to put `sched_yield()` in the spin loop: "if I can't get
+the lock, let someone else run." This is the single most common spinlock
+bug, and Linus Torvalds spent a now-famous forum post explaining why.<Footnote id="1" />
+`sched_yield(2)` does not mean "run the lock holder." It means "run
+*something*," and the scheduler's idea of something is frequently another
+spinner, or the same thread again, because under
+<Spec href="https://man7.org/linux/man-pages/man7/sched.7.html">sched(7)</Spec>
+fair scheduling, yielding tells the kernel almost nothing useful about
+*who* you are waiting for. You pay a syscall to re-enter the same trap.
+
+<PullQuote cite="Linus Torvalds, 2020">
+  the whole point of a lock is that it serializes access. spinning in
+  userspace, where you can be preempted at any instant, serializes against
+  a scheduler that does not know the lock exists.
+</PullQuote>
+
+The correct primitive when you might wait long is the one `std::mutex`
+already uses on Linux: <Spec href="https://man7.org/linux/man-pages/man2/futex.2.html">futex(2)</Spec>.
+A futex-backed mutex spins a little (most implementations do a short
+adaptive spin first), and if the lock is still held, it makes a
+`FUTEX_WAIT` syscall and the thread *sleeps*. A sleeping thread is off
+the runqueue. The kernel can now schedule the lock holder, because the
+core it was hogging is free, and the holder is the obvious next thing to
+run. The wakeup on `unlock` is a `FUTEX_WAKE`. You pay two syscalls in
+the contended case, and in exchange you never burn a core spinning
+against a descheduled holder.
+
+## the measurement, both directions
+
+The same lock, the same workload, two environments. Workload: 2²³ total
+increments of one shared counter under the lock, the critical section
+deliberately tiny, split evenly across threads. Lock variants: a
+test-and-test-and-set spinlock with `PAUSE`, and `std::mutex` (glibc,
+futex-backed).
+
+First, the environment a spinlock is *built* for: one thread per core,
+cores isolated, nothing else competing.
+
+| 8 threads, 8 isolated cores, no oversubscription | wall time |
+|---|---|
+| `std::mutex` (futex) | 0.91 s |
+| ttas spinlock + `PAUSE` | 0.32 s |
+
+The spinlock wins by ~2.8×. The holder is never preempted, so the bet
+always pays, and you skip the futex syscall on every contended acquire.
+This is real and it is why low-latency systems use spinlocks on purpose.
+
+Now the same binary, the only change being 64 threads on those same 8
+cores: 8× oversubscribed, which is what happens the moment your thread
+count stops matching your core count.
+
+| 64 threads, 8 shared cores, 8× oversubscribed | wall time |
+|---|---|
+| `std::mutex` (futex) | 1.6 s |
+| ttas spinlock + `PAUSE` | 41 s |
+
+<Marginalia>
+  The mutex slowed by ~1.8×. The spinlock slowed by ~128×. That asymmetry
+  is the entire post: one primitive degrades, the other detonates.
+</Marginalia>
+
+Same lock, same machine. The mutex got modestly slower because there is
+genuinely more contention. The spinlock fell off the cliff: every time a
+holder is preempted, up to 63 threads spin through their timeslices
+waiting for a thread the scheduler has parked. Zen 4, fixed 3.8 GHz,
+Linux 6.6, glibc 2.39, `taskset` for the pinned case. The absolute
+numbers will move on your hardware. The *shape* will not.
+
+<Aside label="the rule">
+  Count your runnable threads against your cores. If threads ≤ cores and
+  the cores are yours (pinned, isolated, no noisy neighbours), a spinlock
+  is defensible and often correct. If threads can exceed cores, or the
+  cores are shared with anything (other processes, the kernel's own
+  work, a hypervisor), the spinlock is a latency bomb and `std::mutex` is
+  the right default. There is no configuration where "just spin" is
+  universally safe.
+</Aside>
+
+## so when do you actually spin
+
+Not never. The case where a spinlock is the right call is specific and
+you usually have to engineer it on purpose:
+
+- **One thread per core, pinned.** `pthread_setaffinity_np`, and the
+  thread count never exceeds the cores you own.
+- **Cores isolated from the scheduler.** `isolcpus` or a `cpuset`, plus
+  `nohz_full` and IRQ affinity moved elsewhere, so the kernel almost
+  never preempts your thread to do its own housekeeping.
+- **Critical sections that are genuinely tiny and bounded.** No syscalls,
+  no allocation, no page faults inside the lock. If the holder can block,
+  it can be descheduled while holding, and you are back to the cliff.
+
+That is the environment a busy-polling, kernel-bypass system already
+builds for other reasons, which is exactly why spinlocks and that world
+travel together. Outside it, the conditions silently break: someone adds
+a thread, a `cpuset` is misconfigured, the box gets virtualized and the
+hypervisor steals your vCPU mid-critical-section. The lock that
+benchmarked beautifully on a tuned host becomes the worst line of code in
+production, and nothing in the source changed.
+
+The honest answer to "spinlock or mutex" is a question back: *do you own
+the core?* If you can't answer yes with evidence, you have already
+answered the original question.
+
+<Footnotes items={[
+  { id: "1", content: "Linus Torvalds, realworldtech.com forum, January 2020, on why userspace spinlocks with <code>sched_yield</code> are 'just buggy': <a href='https://www.realworldtech.com/forum/?threadid=189711&curpostid=189752'>realworldtech.com/forum</a>. Malte Skarupke's measurements that prompted the thread are also worth reading: <a href='https://probablydance.com/2019/12/30/measuring-mutexes-spinlocks-and-how-bad-the-linux-scheduler-really-is/'>'Measuring mutexes, spinlocks and how bad the Linux scheduler really is'</a> (2019)." }
+]} />
+
+<Ornament kind="section" />
