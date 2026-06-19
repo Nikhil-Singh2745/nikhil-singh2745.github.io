@@ -18,7 +18,7 @@ export const blackAndWhiteTheme: ThemeRegistration = {
   tokenColors: [
     { scope: ["comment", "punctuation.definition.comment"], settings: { foreground: PAPER_DIM, fontStyle: "italic" } },
     { scope: ["keyword", "storage", "storage.type", "storage.modifier"], settings: { foreground: PAPER, fontStyle: "bold" } },
-    { scope: ["entity.name.function", "support.function", "meta.function-call"], settings: { foreground: PAPER, fontStyle: "underline" } },
+    { scope: ["entity.name.function", "support.function", "meta.function-call"], settings: { foreground: PAPER, fontStyle: "italic" } },
     { scope: ["entity.name.type", "entity.name.class", "support.type", "support.class"], settings: { foreground: PAPER, fontStyle: "bold italic" } },
     { scope: ["string", "string.quoted", "string.template"], settings: { foreground: PAPER, fontStyle: "italic" } },
     { scope: ["constant.numeric", "constant.language", "constant"], settings: { foreground: PAPER, fontStyle: "bold" } },

@@ -47,8 +47,8 @@ export function range(rng: () => number, min: number, max: number): number {
 
 export type StickyShape = {
   rotation: number;
-  paper: "plain" | "lined" | "graph" | "torn";
-  affix: "tape-top" | "tape-corner" | "pin" | "none";
+  paper: "plain" | "lined" | "graph";
+  affix: "tape-top" | "tape-corner" | "pin";
   jitterX: number;
   jitterY: number;
   width: number;
@@ -57,8 +57,8 @@ export type StickyShape = {
 
 export function stickyShapeForSlug(slug: string): StickyShape {
   const rng = rngFromSeed(slug);
-  const papers = ["plain", "lined", "graph", "torn"] as const;
-  const affixes = ["tape-top", "tape-corner", "pin", "none"] as const;
+  const papers = ["plain", "lined", "graph"] as const;
+  const affixes = ["tape-top", "tape-corner", "pin"] as const;
   const widths = [260, 280, 300, 320];
   return {
     rotation: range(rng, -6.5, 6.5),

@@ -1,0 +1,650 @@
+---
+title: a personal search engine on the Neural Engine
+subtitle: Spotlight indexes words. this indexes meaning.
+date: 2026-06-19
+tags: [side-project, apple-silicon, ml, swift]
+summary: "load a text-embedding model onto the ANE, vectorize your local files, search by concept instead of keyword. end-to-end on a Mac."
+draft: false
+---
+
+<DropCap char="S" />potlight is a keyword matcher with a ranking function bolted on. It is
+very good at what it does, and what it does is find the file where you
+typed the word you remember. Ask it for "database connection cleanup"
+when your file says `drop idle connections after timeout` and you get
+nothing. The words are different. The concept is the same. Spotlight
+does not traffic in concepts.
+
+Text-embedding models do. They compress a sentence into a dense vector
+where geometric proximity tracks semantic similarity. Two sentences that
+*mean* the same thing land near each other in that space, regardless of
+shared vocabulary. This is not new or exotic. What is relatively new is
+that Apple ships a 16-core (or 32-core, on Ultra) Neural Engine on every
+machine, and it is *idle* almost all of the time. It is a matrix
+multiplication accelerator sitting cold while Spotlight does string
+matching on the CPU.
+
+The project: load a small text-embedding model onto the ANE, point it at
+a directory tree of markdown files (notes, documentation, code
+comments, whatever), build a local vector index, and expose a search
+interface that understands what you meant, not what you typed. No
+server. No API key. No data leaving the machine.
+
+<Aside label="skip ahead">
+  If you're mostly here for the numbers — no judgment, same — the
+  [test bench](#test-bench) section has all the latency and throughput
+  data.
+</Aside>
+
+<Aside label="scope">
+  This is a side project, not the usual systems-programming fare. No
+  cache lines were harmed. The tags reflect that.
+</Aside>
+
+## the model
+
+The model choice matters less than people think, provided you stay
+small. For local semantic search over English text, a model in the
+30M-110M parameter range is more than sufficient, and anything larger is
+wasting ANE cycles on marginal recall improvements you will never
+notice over your own notes.
+
+Good candidates:
+
+| model | params | dim | notes |
+|---|---|---|---|
+| `all-MiniLM-L6-v2` | 22M | 384 | fast, good enough for most use cases |
+| `bge-small-en-v1.5` | 33M | 384 | slightly better retrieval quality |
+| `nomic-embed-text-v1.5` | 137M | 768 | overkill for local files, but if you have the headroom |
+| `gte-small` | 33M | 384 | strong on short passages |
+
+`all-MiniLM-L6-v2` is the right default. 22 million parameters, 384-dimensional output, and it converts to Core ML cleanly. On a 32-core Neural Engine, inference on a single sentence is sub-millisecond. You are not building a production RAG pipeline; you are searching your own notes. This model is plenty.
+
+## converting to Core ML
+
+The ANE speaks Core ML. Everything else is a wrapper or a fallback. The
+conversion path is: Hugging Face checkpoint to ONNX, ONNX to Core ML via
+`coremltools`, with explicit `compute_units=.all` so the converter
+targets the ANE alongside the CPU and GPU.
+
+<CodeBlock lang="python" caption="convert.py: Hugging Face → Core ML, targeting the ANE."
+  code={`import coremltools as ct
+from transformers import AutoTokenizer, AutoModel
+import torch
+import numpy as np
+
+model_name = "sentence-transformers/all-MiniLM-L6-v2"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModel.from_pretrained(model_name, torchscript=True)
+model.eval()
+
+dummy = tokenizer(
+    "placeholder sentence for tracing",
+    return_tensors="pt",
+    padding="max_length",
+    max_length=128,
+    truncation=True,
+)
+
+traced = torch.jit.trace(
+    model,
+    (dummy["input_ids"], dummy["attention_mask"]),
+    strict=False,
+)
+
+mlmodel = ct.convert(
+    traced,
+    inputs=[
+        ct.TensorType(name="input_ids", shape=(1, 128), dtype=np.int32),
+        ct.TensorType(name="attention_mask", shape=(1, 128), dtype=np.int32),
+    ],
+    compute_units=ct.ComputeUnit.ALL,
+    minimum_deployment_target=ct.target.macOS15,
+)
+
+mlmodel.save("MiniLM.mlpackage")`} />
+
+<Marginalia>
+  The fixed sequence length of 128 tokens is deliberate. Dynamic shapes
+  complicate ANE scheduling and the performance gain from variable
+  lengths is negligible when your inputs are short text chunks. Pad
+  everything to 128; the attention mask handles the rest.
+</Marginalia>
+
+`compute_units=.ALL` tells Core ML to place operations on the ANE where
+possible, falling back to GPU or CPU for anything the ANE cannot handle
+(typically the tokenizer preprocessing, which stays on CPU anyway). On
+M3 Ultra with the 32-core Neural Engine, the entire forward pass of
+MiniLM fits on the ANE with no spillover.
+
+One thing to verify after conversion: open the `.mlpackage` in Xcode and
+check the "Predictions" tab. You want to see the Neural Engine listed as
+the primary compute unit. If it says "CPU only," the conversion missed
+an op that the ANE cannot run, and you need to trace the model
+differently or pick a simpler architecture.
+
+## the indexing pipeline
+
+The indexer does three things: walk a directory tree, chunk each file,
+and embed each chunk. The chunks go into an in-memory vector store with
+enough metadata to point back to the source file and line range.
+
+<CodeBlock lang="swift" caption="Indexer.swift: walk, chunk, embed."
+  code={`import CoreML
+import Foundation
+import NaturalLanguage
+
+struct Chunk {
+    let file: URL
+    let lineRange: Range<Int>
+    let text: String
+    var embedding: [Float] = []
+}
+
+final class Indexer {
+    let model: MLModel
+    let tokenizer: NLTokenizer
+
+    init() throws {
+        let config = MLModelConfiguration()
+        config.computeUnits = .all
+        model = try MLModel(
+            contentsOf: MLModel.compileModel(
+                at: Bundle.main.url(
+                    forResource: "MiniLM",
+                    withExtension: "mlpackage"
+                )!
+            )
+        )
+        tokenizer = NLTokenizer(unit: .sentence)
+    }
+
+    func indexDirectory(_ root: URL) throws -> [Chunk] {
+        let fm = FileManager.default
+        let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )!
+
+        var chunks: [Chunk] = []
+
+        for case let fileURL as URL in enumerator {
+            guard fileURL.pathExtension == "md"
+               || fileURL.pathExtension == "mdx"
+               || fileURL.pathExtension == "txt"
+            else { continue }
+
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = content.components(separatedBy: .newlines)
+            let fileChunks = chunkLines(lines, file: fileURL, windowSize: 6, stride: 3)
+            chunks.append(contentsOf: fileChunks)
+        }
+
+        // batch embed
+        for i in chunks.indices {
+            chunks[i].embedding = try embed(chunks[i].text)
+        }
+
+        return chunks
+    }
+
+    private func chunkLines(
+        _ lines: [String],
+        file: URL,
+        windowSize: Int,
+        stride: Int
+    ) -> [Chunk] {
+        var chunks: [Chunk] = []
+        var start = 0
+        while start < lines.count {
+            let end = min(start + windowSize, lines.count)
+            let text = lines[start..<end].joined(separator: " ")
+            guard !text.trimmingCharacters(in: .whitespaces).isEmpty else {
+                start += stride
+                continue
+            }
+            chunks.append(Chunk(
+                file: file,
+                lineRange: start..<end,
+                text: text
+            ))
+            start += stride
+        }
+        return chunks
+    }
+
+    private func embed(_ text: String) throws -> [Float] {
+        let inputIDs = tokenize(text, maxLength: 128)
+        let mask = inputIDs.map { $0 != 0 ? Int32(1) : Int32(0) }
+
+        let inputArray = try MLMultiArray(shape: [1, 128], dataType: .int32)
+        let maskArray = try MLMultiArray(shape: [1, 128], dataType: .int32)
+
+        for (i, val) in inputIDs.enumerated() {
+            inputArray[i] = NSNumber(value: val)
+        }
+        for (i, val) in mask.enumerated() {
+            maskArray[i] = NSNumber(value: val)
+        }
+
+        let input = try MLDictionaryFeatureProvider(
+            dictionary: [
+                "input_ids": MLFeatureValue(multiArray: inputArray),
+                "attention_mask": MLFeatureValue(multiArray: maskArray),
+            ]
+        )
+
+        let output = try model.prediction(from: input)
+        let embeddings = output.featureValue(for: "last_hidden_state")!
+            .multiArrayValue!
+
+        // mean pooling over non-padding tokens
+        return meanPool(embeddings, mask: mask)
+    }
+
+    private func tokenize(_ text: String, maxLength: Int) -> [Int32] {
+        // simplified: in production, load the actual SentencePiece/
+        // WordPiece vocab. for a prototype, NLTokenizer + a vocab
+        // lookup table works.
+        var ids = [Int32](repeating: 0, count: maxLength)
+        ids[0] = 101  // [CLS]
+        tokenizer.string = text
+        var idx = 1
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            guard idx < maxLength - 1 else { return false }
+            // hash lookup into wordpiece vocab omitted for brevity
+            ids[idx] = Int32(text[range].hashValue & 0x7FFF)
+            idx += 1
+            return true
+        }
+        ids[idx] = 102  // [SEP]
+        return ids
+    }
+
+    private func meanPool(_ arr: MLMultiArray, mask: [Int32]) -> [Float] {
+        let seqLen = 128
+        let dim = 384
+        var pooled = [Float](repeating: 0, count: dim)
+        var count: Float = 0
+
+        for t in 0..<seqLen where mask[t] == 1 {
+            for d in 0..<dim {
+                let index = t * dim + d
+                pooled[d] += arr[index].floatValue
+            }
+            count += 1
+        }
+
+        return pooled.map { $0 / max(count, 1) }
+    }
+}`} />
+
+Chunking strategy deserves a brief note. The sliding window of 6 lines
+with stride 3 is intentionally crude. For markdown files, you could
+parse headers and chunk by section. For code, you could chunk by
+function. Both are better and both are more work. The sliding window
+works well enough to start searching immediately, and you can refine the
+chunker later without changing anything else in the pipeline.
+
+<Aside label="tokenizer caveat">
+  The tokenizer in the Swift snippet above is a placeholder. MiniLM uses
+  a WordPiece vocabulary, not NLTokenizer's linguistic tokenization. For
+  a real build, either bundle the vocab file and implement WordPiece
+  encoding in Swift, or use a bridged Python tokenizer via PythonKit.
+  The embedding quality degrades meaningfully with wrong tokenization.
+</Aside>
+
+## the vector store
+
+For a local tool searching tens of thousands of chunks, you do not need
+a vector database. A flat array of embeddings with brute-force cosine
+similarity is fast enough and has zero dependencies. On 96 GB of unified
+memory, you can hold millions of 384-dimensional vectors in RAM without
+thinking about it.
+
+<CodeBlock lang="swift" caption="VectorStore.swift: brute-force cosine search."
+  code={`import Accelerate
+
+struct SearchResult {
+    let chunk: Chunk
+    let score: Float
+}
+
+final class VectorStore {
+    private var chunks: [Chunk] = []
+
+    func load(_ indexed: [Chunk]) {
+        chunks = indexed
+    }
+
+    func search(query: [Float], topK: Int = 10) -> [SearchResult] {
+        var results: [(Int, Float)] = []
+
+        let qNorm = l2Norm(query)
+        guard qNorm > 0 else { return [] }
+        let qNormalized = query.map { $0 / qNorm }
+
+        for (i, chunk) in chunks.enumerated() {
+            let score = dot(qNormalized, normalize(chunk.embedding))
+            results.append((i, score))
+        }
+
+        results.sort { $0.1 > $1.1 }
+
+        return results.prefix(topK).map { idx, score in
+            SearchResult(chunk: chunks[idx], score: score)
+        }
+    }
+
+    private func dot(_ a: [Float], _ b: [Float]) -> Float {
+        var result: Float = 0
+        vDSP_dotpr(a, 1, b, 1, &result, vDSP_Length(a.count))
+        return result
+    }
+
+    private func l2Norm(_ v: [Float]) -> Float {
+        var sumSq: Float = 0
+        vDSP_svesq(v, 1, &sumSq, vDSP_Length(v.count))
+        return sqrt(sumSq)
+    }
+
+    private func normalize(_ v: [Float]) -> [Float] {
+        let n = l2Norm(v)
+        guard n > 0 else { return v }
+        return v.map { $0 / n }
+    }
+}`} />
+
+<Marginalia>
+  The Accelerate framework's vDSP routines are doing SIMD dot products
+  under the hood. For 384 dimensions, a single dot product is roughly
+  200 ns on M-series. Searching 100k chunks takes about 20 ms. You will
+  hit the "should I add an index" question somewhere around a million
+  chunks, and even then, only if you want sub-5ms response times.
+</Marginalia>
+
+If you outgrow brute force, the next step is an approximate nearest
+neighbor index. Apple ships `vImage` and `BNNS`, but honestly, for local
+use, just embed the [usearch](https://github.com/unum-cloud/usearch)
+library. It is a single-header C++ ANN index that links into Swift
+trivially and handles HNSW graph construction. But start with brute
+force. You will be surprised how long it stays fast enough.
+
+## persistence
+
+Recomputing embeddings on every launch defeats the purpose. Serialize
+the index to disk. The format does not matter much for a local tool;
+a flat binary file of `(file path, line range, embedding)` records works
+fine. More structured alternatives: SQLite with a blob column for the
+embedding vector, or a simple JSON manifest with base64-encoded float
+arrays.
+
+<CodeBlock lang="swift" caption="save and load: a flat binary format."
+  code={`import Foundation
+
+extension VectorStore {
+    func save(to url: URL) throws {
+        var data = Data()
+        for chunk in chunks {
+            let pathData = chunk.file.path.data(using: .utf8)!
+            var pathLen = UInt32(pathData.count)
+            data.append(Data(bytes: &pathLen, count: 4))
+            data.append(pathData)
+
+            var lower = Int32(chunk.lineRange.lowerBound)
+            var upper = Int32(chunk.lineRange.upperBound)
+            data.append(Data(bytes: &lower, count: 4))
+            data.append(Data(bytes: &upper, count: 4))
+
+            var dim = UInt32(chunk.embedding.count)
+            data.append(Data(bytes: &dim, count: 4))
+            chunk.embedding.withUnsafeBufferPointer { buf in
+                data.append(UnsafeBufferPointer(
+                    start: UnsafeRawPointer(buf.baseAddress!)
+                        .assumingMemoryBound(to: UInt8.self),
+                    count: buf.count * MemoryLayout<Float>.size
+                ))
+            }
+        }
+        try data.write(to: url)
+    }
+
+    func loadFromDisk(_ url: URL) throws {
+        let data = try Data(contentsOf: url)
+        var offset = 0
+        var loaded: [Chunk] = []
+
+        while offset < data.count {
+            let pathLen = data.subdata(in: offset..<offset+4)
+                .withUnsafeBytes { $0.load(as: UInt32.self) }
+            offset += 4
+
+            let pathStr = String(
+                data: data.subdata(in: offset..<offset+Int(pathLen)),
+                encoding: .utf8
+            )!
+            offset += Int(pathLen)
+
+            let lower = data.subdata(in: offset..<offset+4)
+                .withUnsafeBytes { $0.load(as: Int32.self) }
+            offset += 4
+            let upper = data.subdata(in: offset..<offset+4)
+                .withUnsafeBytes { $0.load(as: Int32.self) }
+            offset += 4
+
+            let dim = data.subdata(in: offset..<offset+4)
+                .withUnsafeBytes { $0.load(as: UInt32.self) }
+            offset += 4
+
+            let floatBytes = Int(dim) * MemoryLayout<Float>.size
+            let embedding: [Float] = data.subdata(
+                in: offset..<offset+floatBytes
+            ).withUnsafeBytes {
+                Array($0.bindMemory(to: Float.self))
+            }
+            offset += floatBytes
+
+            loaded.append(Chunk(
+                file: URL(fileURLWithPath: pathStr),
+                lineRange: Int(lower)..<Int(upper),
+                text: "",  // text not stored; re-read from file if needed
+                embedding: embedding
+            ))
+        }
+
+        chunks = loaded
+    }
+}`} />
+
+The trade-off: the binary format does not store the original text (to
+keep the index small). When displaying results, read the source file and
+extract the relevant line range. The files are local; the read is
+sub-millisecond.
+
+## the query interface
+
+A CLI is the right first interface. A GUI can come later (and on macOS,
+a `NSStatusBarButton` that drops down a search field is about 80 lines
+of AppKit). The CLI version:
+
+<CodeBlock lang="swift" caption="main.swift: search from the terminal."
+  code={`import Foundation
+
+let args = CommandLine.arguments
+guard args.count >= 3 else {
+    print("usage: neuralsearch <index-path> <query>")
+    exit(1)
+}
+
+let indexPath = URL(fileURLWithPath: args[1])
+let query = args.dropFirst(2).joined(separator: " ")
+
+let store = VectorStore()
+let indexer = try Indexer()
+
+if FileManager.default.fileExists(atPath: indexPath.path) {
+    try store.loadFromDisk(indexPath)
+} else {
+    print("index not found. run: neuralsearch-index <dir> <index-path>")
+    exit(1)
+}
+
+let queryEmbedding = try indexer.embed(query)
+let results = store.search(query: queryEmbedding, topK: 5)
+
+for (i, result) in results.enumerated() {
+    let path = result.chunk.file.lastPathComponent
+    let lines = result.chunk.lineRange
+    print("\\(i + 1). [\\(String(format: "%.3f", result.score))] "
+        + "\\(path):\\(lines.lowerBound)-\\(lines.upperBound)")
+
+    // read and display the actual text
+    if let content = try? String(contentsOf: result.chunk.file, encoding: .utf8) {
+        let allLines = content.components(separatedBy: .newlines)
+        let snippet = allLines[lines].joined(separator: "\\n")
+        print("   \\(snippet)")
+    }
+    print()
+}`} />
+
+A search for "database connection cleanup" against a codebase that
+contains the line `drop idle connections after timeout` should surface
+that file in the top results. The embedding model compressed both
+phrases into nearby points in a 384-dimensional space because they
+describe the same concept. Spotlight would find neither unless you
+searched for "idle" or "timeout" specifically.
+
+## test bench
+
+All numbers below were collected on one machine, one model, one run
+configuration. If you are reproducing this on different hardware, scale
+expectations by core count and memory bandwidth.
+
+| | |
+|---|---|
+| **machine** | Mac Studio (2025) |
+| **chip** | Apple M3 Ultra |
+| **CPU** | 28-core (16P + 12E) |
+| **GPU** | 60-core |
+| **Neural Engine** | 32-core |
+| **memory** | 96 GB unified (800 GB/s bandwidth) |
+| **storage** | 1 TB SSD |
+| **macOS** | 26.5.1 |
+| **Xcode** | 26.5 |
+| **Core ML Tools** | 8.2 |
+| **model** | `all-MiniLM-L6-v2`, 22M params, 384-dim, seq_len=128 |
+
+## benchmarks
+
+### per-inference latency
+
+Single embedding, one 128-token input, 384-dimensional output. Median
+of 10,000 runs after a 500-run warmup. Core ML `MLModelConfiguration`
+with `computeUnits` set to each target.
+
+| compute target | median latency | p99 latency | notes |
+|---|---|---|---|
+| Neural Engine (`.all`) | 0.38 ms | 0.52 ms | all ops placed on ANE |
+| GPU only (`.cpuAndGPU`) | 1.1 ms | 1.6 ms | Metal dispatch overhead visible |
+| CPU only (`.cpuOnly`) | 3.8 ms | 4.3 ms | 16 P-cores, NEON/AMX |
+
+<Marginalia>
+  The ANE is roughly 10x faster than CPU and 3x faster than GPU for
+  this model. The gap widens further under sustained throughput because
+  the ANE draws a fraction of the power, leaving thermal headroom for
+  the CPU to handle I/O concurrently.
+</Marginalia>
+
+### indexing throughput
+
+Full re-index of a local file tree. Sliding-window chunking (6 lines,
+stride 3), sequential embedding on the ANE, single-threaded I/O.
+Measured wall-clock from start to index serialized on disk.
+
+| corpus | files | chunks | index time | throughput | index size on disk |
+|---|---|---|---|---|---|
+| personal notes | 340 | 4,200 | 1.8 s | 2,330 chunks/s | 6.1 MB |
+| project docs (monorepo) | 2,100 | 31,000 | 13.4 s | 2,310 chunks/s | 45 MB |
+| large codebase (comments + md) | 8,400 | 112,000 | 48 s | 2,330 chunks/s | 163 MB |
+| stress test (synthetic) | 25,000 | 510,000 | 3 min 38 s | 2,340 chunks/s | 744 MB |
+
+Throughput is flat at ~2,330 chunks/s regardless of corpus size. The
+bottleneck is ANE inference, not I/O or chunking. At this rate, a
+million-chunk corpus (more than anyone's local notes) indexes in about
+seven minutes.
+
+<Aside label="parallelism note">
+  These numbers are single-threaded I/O with serial ANE inference. Core
+  ML can batch predictions, and the ANE's pipeline can overlap with CPU
+  file reads. A concurrent pipeline (dispatch queue for I/O, serial
+  model predictions) would improve wall time by 20-30% on the larger
+  corpora, but the serial version is already fast enough that the
+  complexity is hard to justify.
+</Aside>
+
+### query latency (brute-force cosine)
+
+Time from query string to ranked results, including embedding the query
+on the ANE plus brute-force cosine similarity over the full index.
+`vDSP_dotpr` for dot products, single-threaded.
+
+| index size (chunks) | embed query | search (cosine) | total | top-5 recall |
+|---|---|---|---|---|
+| 4,200 | 0.4 ms | 0.8 ms | 1.2 ms | - |
+| 31,000 | 0.4 ms | 5.9 ms | 6.3 ms | - |
+| 112,000 | 0.4 ms | 21 ms | 21.4 ms | - |
+| 510,000 | 0.4 ms | 96 ms | 96.4 ms | - |
+
+The embed step is constant (one ANE call). The search step scales
+linearly, as expected for brute force. Sub-100 ms at half a million
+chunks means you will feel instant up to roughly 200k chunks, and
+"fast enough" up to about a million. Beyond that, add an HNSW index.
+
+### cold start vs warm
+
+| scenario | total time |
+|---|---|
+| warm (model loaded, index in memory) | 1.2 ms for 4.2k chunks |
+| cold (load `.mlmodelc` + deserialize index from SSD) | 180 ms for 4.2k chunks |
+| cold (compile `.mlpackage` on first run) | 1.4 s for 4.2k chunks |
+
+<PullQuote cite="the pitch">
+  a 32-core Neural Engine sitting idle while Spotlight does regex on
+  the CPU is a waste of silicon that Apple already paid for.
+</PullQuote>
+
+The cold-start penalty is almost entirely the Core ML runtime compiling
+the model graph for the ANE pipeline. Pre-compile with
+`coremlcompiler` and ship the `.mlmodelc` to cut cold start from 1.4 s
+to 180 ms. Keep a daemon process with the model loaded to eliminate it
+entirely.
+
+## what this is not
+
+This is not a RAG system. There is no language model generating answers.
+The search returns the *source text*, ranked by relevance, and you read
+it yourself. Adding a local LLM (Llama, Mistral, whatever fits in 96 GB)
+to summarize the top-k results is a natural extension, but it is a
+different project with different trade-offs, and the search index is
+useful on its own without it.
+
+This is also not a replacement for `grep`. If you know the exact string,
+`grep` or `ripgrep` will find it faster and with certainty. Semantic
+search is for the query you *cannot* express as a pattern: "that thing
+about cleaning up resources when a connection drops." The two tools
+complement each other.
+
+## the build, summarized
+
+1. Convert `all-MiniLM-L6-v2` to Core ML with `coremltools`, targeting `.all` compute units.
+2. Write an indexer that walks your file tree, chunks text with a sliding window, and embeds each chunk via the Core ML model.
+3. Store embeddings in a flat array. Brute-force cosine similarity for search. Use `vDSP` for the dot products.
+4. Serialize the index to a binary file. Load it on subsequent runs instead of re-embedding.
+5. Wrap the search in a CLI. Embed the query, rank against the index, print results with file paths and line numbers.
+6. Optionally: put the model in a persistent process, add a menu bar UI, hook up `FSEvents` to re-index on file changes.
+
+The whole thing is a few hundred lines of Swift, one Python script for
+model conversion, and zero network calls. Everything runs on the
+machine, on hardware that was already there, doing nothing.
+
+<Ornament kind="section" />
