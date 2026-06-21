@@ -20,10 +20,13 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     <ol class="ribbon__list">
       {
         entries.map((e, i) => (
-          <li class="ribbon__item">
+          <li class={`ribbon__item ${e.data.featured ? "ribbon__item--featured" : ""}`}>
             <a href={`${base}/dumps/${e.id}/`} class="ribbon__link">
               <span class="ribbon__num">{String(i + 1).padStart(2, "0")}</span>
               <div class="ribbon__body">
+                {e.data.featured && (
+                  <span class="ribbon__featured-badge mono">// FOCUS: SYSTEM ENTRY</span>
+                )}
                 <h3 class="ribbon__title">{e.data.title}</h3>
                 {e.data.subtitle && (
                   <p class="ribbon__sub">{e.data.subtitle}</p>
@@ -41,6 +44,29 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
                 )}
               </div>
             </a>
+            {
+              e.id === "004-nanomq-shared-memory-queue" && (
+                <div class="ribbon__github-banner">
+                  <a
+                    href="https://github.com/Nikhil-Singh2745/nanomq"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="mono ribbon__github-link"
+                  >
+                    <svg
+                      class="ribbon__github-icon"
+                      viewBox="0 0 16 16"
+                      width="14"
+                      height="14"
+                      fill="currentColor"
+                    >
+                      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                    </svg>
+                    GitHub: Nikhil-Singh2745/nanomq →
+                  </a>
+                </div>
+              )
+            }
             <hr class="hairline" />
           </li>
         ))
@@ -152,6 +178,79 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     }
     .ribbon__tags {
       justify-content: flex-start;
+    }
+  }
+
+  .ribbon__github-banner {
+    display: flex;
+    justify-content: flex-start;
+    padding-left: 5.5rem;
+    padding-bottom: 1.5rem;
+    margin-top: -0.75rem;
+  }
+  @media (max-width: 56rem) {
+    .ribbon__github-banner {
+      padding-left: 4rem;
+      padding-bottom: 1.25rem;
+      margin-top: -1.25rem;
+    }
+  }
+  .ribbon__github-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--color-ink);
+    border: 1px solid var(--color-hairline);
+    padding: 0.3rem 0.6rem;
+    background: var(--color-paper);
+    transition: all 180ms var(--ease-out-expo);
+  }
+  .ribbon__github-link:hover {
+    border-color: var(--color-ink);
+    transform: translateY(-1px);
+    box-shadow: 2px 2px 0 0 var(--color-ink);
+  }
+  .ribbon__github-icon {
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  .ribbon__item--featured {
+    background: var(--color-paper-warm);
+    border: 1px solid var(--color-ink);
+    margin-block: 1.5rem;
+    padding-inline: 1.5rem;
+    box-shadow: 4px 4px 0 0 var(--color-ink);
+    transition: transform 240ms var(--ease-out-expo),
+      box-shadow 240ms var(--ease-out-expo);
+  }
+  .ribbon__item--featured:hover,
+  .ribbon__item--featured:focus-within {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 var(--color-ink);
+  }
+  .ribbon__item--featured .hairline {
+    display: none;
+  }
+  .ribbon__featured-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    color: var(--color-ink);
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+    letter-spacing: 0.08em;
+  }
+  @media (max-width: 36rem) {
+    .ribbon__item--featured {
+      padding-inline: 1rem;
+      margin-block: 1rem;
+      box-shadow: 3px 3px 0 0 var(--color-ink);
+    }
+    .ribbon__item--featured:hover,
+    .ribbon__item--featured:focus-within {
+      transform: translate(-1px, -1px);
+      box-shadow: 4px 4px 0 0 var(--color-ink);
     }
   }
 </style>

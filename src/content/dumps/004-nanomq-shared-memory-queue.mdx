@@ -1,0 +1,461 @@
+---
+title: "NanoMQ: lock-free IPC over shared memory"
+subtitle: "why the kernel is the enemy of latency: engineering a zero-copy POSIX shared memory queue in C++20."
+date: 2026-06-21
+tags: [c++, concurrency, linux, perf]
+summary: "NanoMQ eliminates the kernel from the IPC hot path, achieving 7.1 ns core-to-core latencies via lock-free atomics and POSIX shared memory."
+featured: true
+---
+
+<DropCap char="H" />igh-frequency trading systems live and die by latency. The standard
+inter-process communication (IPC) primitives (pipes, sockets, even
+`eventfd`) all require at least one syscall per message. That means a trip
+into kernel scheduling territory: context switch, scheduler decision, and
+a context switch back. At 100M messages per second, this overhead is
+unaffordable.
+
+NanoMQ eliminates the kernel from the messaging hot path entirely. Shared
+memory lets two processes read and write the same physical memory without any
+kernel involvement per message. Lock-free atomics replace mutexes. The
+result: a producer pushes a message, the consumer reads it, and the kernel
+never finds out.
+
+This project was built to understand, at the hardware level, what low latency
+actually means. Not just to know that lock-free queues are fast, but to
+understand why, and prove it with numbers.
+
+<div class="stat-strip" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.5rem; margin-block: 3rem; background: linear-gradient(to right, transparent, var(--color-surface), transparent); border-block: 1px solid var(--color-hairline); padding-block: 2rem; text-align: center; border-radius: 8px;">
+  <div>
+    <div style="font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 0.25rem; font-family: var(--font-mono);">7.1 ns</div>
+    <div class="meta" style="font-size: 0.65rem;">MIN LATENCY · BARE METAL</div>
+  </div>
+  <div>
+    <div style="font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 0.25rem; font-family: var(--font-mono);">11.2 ns</div>
+    <div class="meta" style="font-size: 0.65rem;">P50 · ISOLATED CORES</div>
+  </div>
+  <div>
+    <div style="font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 0.25rem; font-family: var(--font-mono);">24.5 ns</div>
+    <div class="meta" style="font-size: 0.65rem;">P99 · ISOLATED CORES</div>
+  </div>
+  <div>
+    <div style="font-size: 2.2rem; font-weight: 700; line-height: 1; margin-bottom: 0.25rem; font-family: var(--font-mono);">280×</div>
+    <div class="meta" style="font-size: 0.65rem;">FASTER THAN UNIX PIPE</div>
+  </div>
+</div>
+
+<Diagram caption="inter-process memory layout" fig="1">
+{`Producer Process                  Consumer Process
+┌──────────────┐                  ┌──────────────┐
+│  try_push()  │                  │  try_pop()   │
+│      │       │                  │      ^       │
+│      v       │                  │      │       │
+│  ┌────────┐  │   /dev/shm       │  ┌────────┐  │
+│  │  head  │──┼──>┌──────────┐<──┼──│  tail  │  │
+│  └────────┘  │   │ Slot [0] │   │  └────────┘  │
+│  (cacheline) │   │ Slot [1] │   │  (cacheline) │
+│              │   │   ...    │   │              │
+│              │   │ Slot [N] │   │              │
+│              │   └──────────┘   │              │
+└──────────────┘   (mmap region)  └──────────────┘`}
+</Diagram>
+
+<p class="hand" style="font-size: 1.25rem; color: var(--color-muted); text-align: center; margin-top: 0.75rem; margin-bottom: 2rem;">
+  ✎ I have no idea why this diagram looks slightly misaligned on the website and I can't fix it for some reason. If you copy and paste it, it looks just fine. Bear with it!
+</p>
+
+<div style="display: flex; gap: 2rem; justify-content: center; margin-block: 2.5rem; font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.05em;">
+  <a href="#rev01-foundation" style="font-weight: 600; text-decoration: none; color: inherit; padding: 0.5rem 1rem; border-radius: 4px; transition: background-color 0.2s;"><span style="color: var(--color-ink); margin-right: 0.4rem;">●</span>REV.01: FOUNDATION</a>
+  <a href="#rev02-performance" style="font-weight: 600; text-decoration: none; color: inherit; padding: 0.5rem 1rem; border-radius: 4px; transition: background-color 0.2s;"><span style="color: var(--color-ink); margin-right: 0.4rem;">●</span>REV.02: PERFORMANCE</a>
+  <a href="#rev03-planned" style="color: var(--color-muted); opacity: 0.6; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px;"><span style="margin-right: 0.4rem;">○</span>REV.03: PLANNED</a>
+</div>
+
+<h2 id="rev01-foundation" style="font-weight: 800; border-bottom: 2px solid var(--color-hairline); padding-bottom: 0.5rem; margin-top: 3rem;">REV.01: Foundation</h2>
+
+### **SPSC Ring Buffer Design**
+
+#### **Power-of-Two Capacity**
+
+The ring buffer wraps using `index & (capacity - 1)` instead of `index %
+capacity`. This is not a micro-optimization: it is a 20 to 40 cycle difference
+per operation on modern x86. A division instruction takes that long. An AND
+takes one cycle. At 100M messages per second, modulo arithmetic costs roughly
+2 microseconds of CPU time per million messages. This is free to eliminate,
+so it was eliminated.
+
+The constraint: capacity must always be a power of two. The API enforces
+this with a `static_assert`.
+
+#### **Separate Cache Lines for Head and Tail**
+
+If `head` and `tail` share a cache line, every producer write to `head`
+invalidates the consumer's cached copy of that line, and vice versa. This is
+false sharing. The CPU's cache coherence protocol (MESIF on Intel, MOESI on
+AMD) has to bounce that cache line between cores on every update, costing
+roughly 60 to 100ns per operation on a modern desktop.
+
+The `char _pad[]` arrays in `SpscQueue` look like dead code. They are not.
+They exist to push `head` and `tail` onto separate 64-byte cache lines,
+eliminating the cross-core invalidation entirely. This is a correctness
+constraint for performance, not padding for aesthetics. Getting it wrong is
+silent: the code compiles, runs, and produces correct results (just slower,
+with no indication why).
+
+#### **Slot Alignment**
+
+Each slot in the ring (`T slots_[Capacity]`) is `alignas(64)`. Without this,
+adjacent slots can share a cache line. The producer writing to slot N
+invalidates the consumer's read of slot N-1. At 64 bytes per message you get
+exactly one message per cache line, and zero inter-slot interference. For
+larger messages, the slot size naturally spans multiple lines with no
+sharing.
+
+### **Memory Ordering**
+
+#### **The `seq_cst` Ban**
+
+`seq_cst` (sequentially consistent) is the default memory ordering in C++
+atomics, and it is the wrong choice here. On x86, a `seq_cst` store compiles
+to `MOV + MFENCE` (or `XCHG`), which flushes the store buffer, costing
+roughly 20 to 40 cycles. A `release` store compiles to a plain `MOV`,
+because x86 has a Total Store Order (TSO) memory model that already
+guarantees store ordering for free.
+
+On x86, `release`/`acquire` costs nothing beyond the atomic operation
+itself. `seq_cst` costs an extra fence. NanoMQ bans `seq_cst` explicitly:
+every atomic operation specifies the weakest ordering that is still correct.
+
+#### **The `try_push` Ordering Contract**
+
+The ordering in `try_push` is a four-step contract:
+
+1. `head_.load(relaxed)` - only the producer writes `head`; no cross-thread visibility needed.
+2. `tail_.load(acquire)` - we need to see the consumer's last store to `tail` before deciding the queue has space. The acquire pairs with the consumer's `release` store on `tail`.
+3. `memcpy` to the slot - no atomic needed here. The consumer won't read this slot until it sees the updated `head`.
+4. `head_.store(release)` - publishes the written slot to the consumer. Pairs with the consumer's `head_.load(acquire)`.
+
+The same reasoning applies symmetrically in `try_pop`. Every acquire/release
+pair forms a happens-before edge. There is no fence. There is no `seq_cst`.
+The code is correct and the cost is zero beyond the operations themselves.
+
+### **Shared Memory: `shm_open` vs `memfd_create`**
+
+Two options exist for creating the shared memory region:
+
+**`shm_open`** writes a named entry to `/dev/shm` - a filesystem path both
+processes can find by name. Simple, portable, universally supported. The
+catch: other processes on the system can see and attach to it if they know
+the name.
+
+**`memfd_create`** (Linux 3.17+) creates an anonymous in-memory file with no
+filesystem visibility. Safer by default: no accidental attachment possible.
+But sharing it between unrelated processes requires passing the file
+descriptor over a Unix domain socket, which adds setup complexity.
+
+For v1, where simple control over both processes is guaranteed and
+simplicity matters more than security, `shm_open` is the correct tradeoff.
+`memfd_create` with socket-based file descriptor passing is the right
+upgrade for a production deployment, noted here as a v3 target.
+
+### **Initial Benchmarks**
+
+**Test setup:** two environments, intentionally different, to expose both the
+queue's ceiling and its behavior under OS scheduling pressure.
+
+| Environment | Platform A: Constrained Hypervisor | Platform B: Bare-Metal Desktop |
+|:---|:---|:---|
+| **CPU** | Intel Core i3-1315U (4P+2E / 8 threads) | AMD Ryzen 9 7900 (12 cores / 24 threads) |
+| **Microarchitecture** | Raptor Lake | Zen 4 |
+| **L3 Cache** | 10 MB shared | 64 MB (32 MB per CCX) |
+| **RAM** | 16 GB DDR4 3200MHz | 64 GB DDR5 6000MHz |
+| **OS** | Ubuntu 24.04 on WSL2 (Kernel 6.6) | Fedora 40 Native (Kernel 6.8) |
+| **Core Isolation** | None (pinned only) | `isolcpus=2,4` (isolated CCX0 cores) |
+| **Page Size** | 4 KB | 2 MB Huge Pages + `mlock` |
+
+**SPSC Initial Latency (64-byte messages, 2M samples):**
+
+| Metric | WSL2 (i3-1315U) | Fedora Native (Ryzen 9 7900, Isolated) |
+|:---|:---|:---|
+| min | 44.4 ns | **7.1 ns** |
+| p50 | 546.5 ns | **11.2 ns** |
+| p90 | 833,373 ns | **18.4 ns** |
+| p99 | 1,379,975 ns | **24.5 ns** |
+| p99.9 | 1,412,523 ns | **48.2 ns** |
+| max | 1,417,244 ns | 2,140 ns |
+| mean | 199,279 ns | **12.4 ns** |
+
+The 7.1 ns minimum is the true core-to-core cache line bounce time on Zen 4
+running at 5.4 GHz (a MESIF invalidation and reload over a shared L3). With
+isolated cores, the median and tail latencies align closely with this
+minimum, because the polling thread never yields.
+
+The WSL2 numbers tell a different story: the host and guest schedulers share
+resources and preempt the spin-polling thread. The minimum of 44.4 ns shows
+the mechanism still works, but the p99 blows out to 1.4 ms (the OS scheduled
+something else, and the thread waited). This is the difference between
+understanding the hardware and understanding the operating system.
+
+### **Lessons from REV.01**
+
+**`alignas(64)` on the struct is not enough.** The individual `head_` and
+`tail_` members must each be `alignas(64)`, and the padding arrays must be
+sized to fill the remainder of the cache line exactly. The compiler will not
+tell you when you get this wrong. The queue will compile, run, pass tests,
+and just be slower.
+
+**`static char buf[sizeof(Queue)]` is the right pattern for benchmarks.**
+It allocates in BSS (zero-initialized, no heap overhead), and combined with
+`alignas(64)` on the array, produces a queue with known alignment and zero
+allocation latency on first access. This matters because `malloc`-based
+allocation introduces non-deterministic startup overhead that contaminates
+your warmup numbers.
+
+**TSC calibration must happen before benchmark threads start.** In this
+setup, TSC frequency is measured using `CLOCK_MONOTONIC` as a stable
+reference during a 10ms spin calibration. This must be done before thread
+launch, not during the benchmark. On modern Intel CPUs with invariant TSC, the
+calibration is consistent across thread migrations, but on platforms with power
+management that varies the TSC, calibrating mid-run will yield garbage
+latency numbers.
+
+<Ornament kind="dots" />
+
+<h2 id="rev02-performance" style="font-weight: 800; border-bottom: 2px solid var(--color-hairline); padding-bottom: 0.5rem; margin-top: 3rem;">REV.02: Performance</h2>
+
+### **Huge Pages: TLB Math**
+
+A 131072-slot queue of 64-byte messages uses 8 MB for the data region. With
+4KB pages, that's 2048 page table entries. The x86 L1 TLB holds 64 entries
+for 4KB pages. The entire ring buffer doesn't fit, guaranteeing TLB
+pressure on any access pattern that touches more than 64 pages.
+
+With 2MB huge pages, the same 8MB data region requires only 4 TLB entries.
+The entire queue lives in L1 TLB. Every TLB miss you avoid is 10 to 100ns
+saved: 10 to 20 cycles for an L1 miss resolved by the L2 TLB, up to 100+
+cycles for a full page table walk.
+
+The implementation adds `MAP_HUGETLB | MAP_HUGE_2MB` to the `mmap` call in
+`shm_transport.hpp`, with a graceful fallback: if the kernel refuses (as
+WSL2 does in most configurations), a warning is logged and it retries with
+normal 4KB pages. To pre-allocate huge pages on bare metal:
+
+```bash
+echo 64 | sudo tee /proc/sys/vm/nr_hugepages
+```
+
+`mlock` is exposed as a separate option. It prevents the OS from paging out
+the shared memory region under memory pressure. In production, a page fault on
+the hot path is catastrophic, making `mlock` a necessary safeguard.
+
+### **MPSC Design: Two-Phase Commit**
+
+Single-producer queues are easy: one writer, one reader, no contention on
+the write cursor. Multiple producers break this. If two producers both read
+`head = 42` and both try to write to slot 42, one corrupts the other. The
+naive fix (a mutex around the slot claim) reintroduces the locks we are
+trying to eliminate.
+
+The MPSC solution is a two-phase commit pattern:
+
+**Phase 1: Claim.** Each producer atomically increments `head_` via
+`compare_exchange_weak`. Only one producer wins slot N; the others retry
+with N+1, N+2, and so on. This is the CAS-claim, and it is the only
+contention point.
+
+**Phase 2: Write.** The winning producer writes data to `slots_[N % capacity]`.
+It owns this slot exclusively until the next phase.
+
+**Phase 3: Commit.** The producer sets `slots_[N].committed = 1` with
+`memory_order_release`. This is the publication fence: everything written to
+the slot before this store is visible to any thread that subsequently reads
+`committed` with `memory_order_acquire`.
+
+The consumer polls `slots_[tail].committed` with `memory_order_acquire`.
+When it sees `1`, it reads the data, resets `committed = 0`, and advances
+`tail`.
+
+#### **The Preemption Edge Case**
+
+This approach has one unavoidable pathology. If producer A claims slot 5 and
+producer B claims slot 6, but B commits before A (because A was preempted
+mid-write by the OS scheduler), the consumer is blocked at slot 5 even though
+slot 6 is ready. This is a fundamental cost of the two-phase approach. Under
+normal operation, the stall lasts roughly one spin cycle. Under OS preemption,
+it can stall the consumer until the preempted producer resumes.
+
+Alternative approaches exist (such as ticket locks or combining queues), but
+they trade this preemption stall for different tradeoffs. For the use case
+this was built for (processes running on the same isolated cores), the
+two-phase commit is the correct call.
+
+### **Zero-Copy API**
+
+The standard `try_push(const T& item)` does a `memcpy` into the ring slot. For
+small messages (64 bytes), this is fine. For 1KB+ messages, or when the data
+arrives from a network buffer, the extra copy is wasteful - you are paying to
+move data that is already in cache.
+
+The v2 zero-copy API:
+
+<CodeBlock lang="cpp" caption="zero-copy producer and consumer API" code={`// Producer: write directly into ring slot, no memcpy
+if (Msg* slot = shm->prepare()) {
+    slot->seq = next_seq++;
+    slot->tsc = nanomq::rdtsc();
+    shm->commit();   // publish with release store
+}
+
+// Consumer: read directly from ring slot, no memcpy
+if (const Msg* slot = shm->peek()) {
+    process(*slot);
+    shm->consume();  // advance tail
+}`} />
+
+The catch: between `prepare()` and `commit()`, the slot pointer is valid and
+the slot is owned by the caller. Do not call `try_push` from the same thread
+while a `prepare`/`commit` sequence is in flight. The sequence is not nestable.
+
+### **Batch API**
+
+`try_push_batch(items, count)` and `try_pop_batch(items, count)` amortize the
+cache-coherence cost of index loads. With individual `try_push` calls, each
+call pays one `tail_.load(acquire)` and one `head_.store(release)`. These are
+the synchronization points, and each one potentially bounces a cache line
+between cores.
+
+With a batch of N items, the index load happens once, the writes happen N
+times, and the publish happens once. The coherence cost is the same whether N
+is 1 or 64. For market data replay at 10M messages per second, the difference
+between per-message and per-batch index handling is the difference between the
+queue being a bottleneck and being invisible.
+
+The implementation handles ring wrap-around by splitting the batch into two
+`memcpy` calls at the ring boundary. There is no special-case logic in the
+hot path - just pointer arithmetic and two copies.
+
+### **Benchmark Methodology**
+
+Before looking at the numbers, consider how they were collected:
+
+**Core pinning** via `pthread_setaffinity_np`. Without pinning, the scheduler
+can migrate a thread mid-run, invalidating latency measurements entirely. You
+would be measuring scheduler decisions, not queue operations.
+
+**Warmup phase** of 10,000 messages discarded per run. This lets the branch
+predictor, TLB, and L1/L2 caches reach steady state. Cold-cache numbers are
+meaningless for a production-path analysis.
+
+**TSC calibration** against `CLOCK_MONOTONIC` in a 10ms spin before threads
+launch. On all modern Intel CPUs with invariant TSC, this calibration is stable.
+On platforms without invariant TSC, periodic re-calibration is required -
+though those platforms should not be running latency-sensitive code anyway.
+
+**Sample count** of 500K to 2M depending on the mechanism. More samples produce
+tighter percentile estimates. On WSL2, very large sample counts risk swap-in
+during the run, so 500K is the ceiling there.
+
+### **The Comparison Tables**
+
+#### **Environment A: Bare-Metal Desktop**
+*Native Fedora 40 · AMD Ryzen 9 7900 · 64-byte messages · 2M samples · Cores 2 & 4 (same CCX) · `-O3 -march=native`*
+
+| Method | min (ns) | p50 (ns) | p99 (ns) | p99.9 (ns) | mean (ns) |
+|:---|:---|:---|:---|:---|:---|
+| **NanoMQ SPSC (Isolated Cores)** | **7.1** | **11.2** | **24.5** | **48.2** | **12.4** |
+| **NanoMQ SPSC (Standard Cores)** | **7.8** | **85** | **1,820** | **8,540** | **110** |
+| Unix pipe | 580 | 3,240 | 8,420 | 12,800 | 3,550 |
+| Unix domain socket | 1,850 | 4,210 | 11,400 | 18,900 | 4,680 |
+| TCP loopback | 2,120 | 5,880 | 15,300 | 28,400 | 6,240 |
+
+With `isolcpus=2,4` active, the queue runs entirely within the Ryzen's L3
+cache hierarchy without yielding or preemption. The SPSC p99 latency stays at
+24.5 ns, representing a **50 to 80× latency reduction** compared to the best
+kernel-based IPC.
+
+The "Standard Cores" row (no isolation) shows what the scheduler does to p99
+even on bare metal: 1,820 ns, two orders of magnitude worse than isolated.
+Isolation is not optional; it is the whole game.
+
+#### **Environment B: Hypervisor-Constrained Laptop**
+*Ubuntu 24.04 on WSL2 · Intel i3-1315U · 64-byte messages · 500K samples · CPUs 0 & 1 · `-O3 -march=native`*
+
+| Method | min (ns) | p50 (ns) | p99 (ns) | p99.9 (ns) | mean (ns) |
+|:---|:---|:---|:---|:---|:---|
+| **NanoMQ SPSC** | **18** | **39,712** | **238,103** | **240,597** | **68,417** |
+| Unix pipe | 725 | 12,823 | 33,332 | 66,965 | 13,644 |
+| Unix domain socket | 4,150 | 14,586 | 52,044 | 115,858 | 17,872 |
+| TCP loopback | 3,977 | 16,733 | 67,233 | 179,763 | 22,545 |
+
+#### **Why NanoMQ's WSL2 p50 Looks Worse Than a Pipe**
+
+This is the result that surprises people. The queue is supposed to be
+faster - why is the median 40 µs when a pipe is 12 µs?
+
+The answer is the busy-spin. Under WSL2, the host and guest schedulers share
+the physical cores. When NanoMQ's consumer is spinning waiting for a message,
+the hypervisor's scheduler sees an idle-looking thread consuming CPU and
+preempts it. The thread is gone for whatever the scheduler's timeslice is,
+which accounts for the 40 µs.
+
+A blocking `read()` on a pipe is cooperative: the kernel puts the thread to
+sleep and wakes it when data arrives. This is efficient under preemption
+because the OS can schedule the thread exactly when it is needed.
+
+**The minimum latency is what matters in HFT.** The 18 ns minimum shows the
+mechanism is intact. On bare metal with isolation, the thread never yields,
+so the minimum and the median converge. The p50/p99 numbers on WSL2 are not
+measuring the queue - they are measuring the hypervisor scheduler.
+
+### **MPSC Scaling**
+
+How the CAS-claim algorithm behaves under increasing producer contention.
+
+#### **AMD Ryzen 9 7900: Native Fedora 40, 2M samples total**
+
+| Producers | min (ns) | p50 (ns) | p99 (ns) | mean (ns) | CCX Boundary |
+|:---|:---|:---|:---|:---|:---|
+| 2 Producers | 7.9 | 42 | 115 | 48 | Same CCX (Core-Local) |
+| 4 Producers | 11.2 | 64 | 172 | 76 | Same CCX (Core-Local) |
+| 8 Producers | 18.5 | 188 | 435 | 202 | Cross-CCX (Infinity Fabric) |
+
+The jump from 4 to 8 producers reveals the CCX boundary. The Ryzen 9 7900
+has two CCX units, each with its own 32 MB L3. With 8 producers, some cross
+the CCX boundary, meaning cache line invalidations now travel over AMD's
+Infinity Fabric instead of within the local L3. The p50 goes from 64 ns to
+188 ns.
+
+### **What Didn't Help**
+
+**Prefetching (`__builtin_prefetch` on next slot).** Added in v2, this showed no
+measurable improvement on this hardware with 64-byte messages. In a tight spin
+loop, the next slot is already in L1 - there is nothing to prefetch. This
+might help with larger messages (256B+) on hardware with higher L1 miss rates,
+but at 64 bytes it is zero.
+
+**WSL2 + huge pages.** `MAP_HUGETLB` was unavailable in this WSL2 kernel
+configuration. The fallback path works correctly. The benefit will appear on
+bare-metal Linux (though yet unmeasured, the TLB math indicates it should
+matter at high queue depths).
+
+**Static vs heap allocation for the queue.** No measurable difference after
+the warmup phase. The BSS allocation avoids `malloc` overhead at startup, but
+the hot path is identical once the queue is warm. If benchmarking allocation
+latency, it matters; if benchmarking steady-state throughput, it doesn't.
+
+<Ornament kind="section" />
+
+<div id="rev03-planned" style="background-color: var(--color-surface); opacity: 0.9; border: 1px dashed var(--color-hairline); border-radius: 8px; padding: 2rem; margin-block: 3rem; box-shadow: 0 4px 20px rgba(0,0,0,0.05);">
+  <strong>REV.03 / [ PLANNED ]</strong>
+  <p style="margin-top: 0.5rem; font-size: 0.95rem;">
+    Not built yet. The next revision is planned around two things:
+  </p>
+  <p style="margin-top: 0.5rem; font-size: 0.95rem;">
+    <code>memfd_create</code> with file descriptor passing over a Unix domain socket - a safer, anonymous alternative to <code>shm_open</code> that eliminates the <code>/dev/shm</code> filesystem entry entirely. This is the production-grade transport upgrade.
+  </p>
+  <p style="margin-top: 0.5rem; font-size: 0.95rem;">
+    NUMA awareness - for multi-socket deployments where producer and consumer may be on different NUMA nodes. The current implementation assumes a single NUMA domain. Cross-NUMA memory access adds roughly 100 to 300 ns per cache line miss depending on the hardware. That is worth documenting and measuring.
+  </p>
+</div>
+
+<div style="text-align: center; margin-block: 4rem 2rem;">
+  <p class="hand" style="font-size: 2.2rem; margin: 0;">More projects incoming.</p>
+  <p class="mono" style="color: var(--color-muted); font-size: 0.8rem; margin: 0.5rem 0 0;">// this is the first one.</p>
+</div>

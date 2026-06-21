@@ -41,6 +41,14 @@ const canonical = new URL(Astro.url.pathname, site || "https://coredump.example"
   </head>
   <body>
     <Hatch />
+    <div class="contact-banner">
+      <div class="shell contact-banner__inner">
+        <span class="meta contact-banner__label">Correspondence</span>
+        <a href="mailto:niksinghsnr2745@gmail.com" class="contact-banner__link mono">
+          // contact me · niksinghsnr2745@gmail.com
+        </a>
+      </div>
+    </div>
     <Masthead />
     <main>
       <slot />
@@ -50,4 +58,40 @@ const canonical = new URL(Astro.url.pathname, site || "https://coredump.example"
     <InspectMode />
     <KonamiPhosphor />
   </body>
+  <style>
+    .contact-banner {
+      background: var(--color-paper-warm);
+      border-bottom: 1px solid var(--color-hairline);
+      padding-block: 0.5rem;
+      font-size: 0.75rem;
+    }
+    .contact-banner__inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .contact-banner__label {
+      color: var(--color-muted);
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+    }
+    .contact-banner__link {
+      color: var(--color-ink);
+      text-decoration: none;
+      transition: color 180ms var(--ease-out-expo);
+      font-size: 0.8rem;
+    }
+    .contact-banner__link:hover {
+      color: var(--color-muted);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    @media (max-width: 48rem) {
+      .contact-banner__inner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+      }
+    }
+  </style>
 </html>
