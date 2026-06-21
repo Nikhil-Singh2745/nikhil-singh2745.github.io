@@ -6,7 +6,11 @@ import LatestRibbon from "@/components/home/LatestRibbon.astro";
 import { getCollection } from "astro:content";
 
 const dumps = (await getCollection("dumps", ({ data }) => !data.draft)).sort(
-  (a, b) => b.data.date.getTime() - a.data.date.getTime(),
+  (a, b) => {
+    if (a.data.featured && !b.data.featured) return -1;
+    if (!a.data.featured && b.data.featured) return 1;
+    return b.data.date.getTime() - a.data.date.getTime();
+  }
 );
 
 const recent = dumps.slice(0, 5);

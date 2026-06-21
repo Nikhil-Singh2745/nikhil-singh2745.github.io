@@ -1,0 +1,87 @@
+---
+title: the JSON tax in crypto market data
+subtitle: JSON on the hot path is not a serialization choice; it is an architectural failure.
+date: 2026-06-21
+tags: [perf, cpp, market-data, networking]
+summary: In traditional finance, market data is binary. Crypto exchanges use JSON over WebSockets, forcing participants to burn latency finding commas.
+---
+
+<DropCap char="I" />n traditional equity markets, market data is delivered as a packed binary struct over UDP multicast. You receive a datagram, cast a pointer, perhaps byte-swap an integer, and the payload is immediately usable. The parser is essentially a `reinterpret_cast`.
+
+In cryptocurrency markets, market data is predominantly distributed as stringified JSON over TLS-encrypted WebSockets. The price and quantity of a limit order book update are not floating-point numbers or fixed-point integers; they are ASCII strings wrapped in a JSON dictionary, which is wrapped in a WebSocket frame, which is wrapped in a TLS record.
+
+This forces string parsing directly onto the critical path. Before you can update a local limit order book or evaluate a signal, your CPU must decrypt AES-GCM, find quotes, allocate strings, unescape characters, and iteratively convert those strings to numerical formats.
+
+It is a latency disaster. Exchanges are offloading their serialization laziness onto every market participant, forcing them to waste their latency budget on finding commas.
+
+## the allocation tragedy of the DOM
+
+Consider a typical L2 order book delta update:
+
+<CodeBlock lang="json" caption="a typical L2 delta payload"
+  code={`{
+  "stream": "btcusdt@depth",
+  "data": {
+    "u": 123456789,
+    "b": [["65000.12", "0.450"]],
+    "a": [["65000.15", "1.200"]]
+  }
+}`} />
+
+A general-purpose DOM parser like `nlohmann/json` or standard `RapidJSON` will parse this by building a syntax tree. For the payload above, the parser must allocate memory for the root object, the `data` object, the arrays, and every individual string. 
+
+If a price string like `"65000.12"` fits in the Small String Optimization (SSO) buffer (typically 15 to 22 bytes), the allocation is elided, but the node itself must still be constructed. If it does not, or if the parser's node structure isn't perfectly optimized, you take a lock on the heap. In a tight loop handling 100,000 updates per second, this is a throughput ceiling and a latency floor.
+
+Worse, reading the parsed values typically involves looking up keys in a hash map or iterating over an array of nodes. You are paying for a string hash and an indirect branch just to find the sequence number.
+
+## branch predictor poison
+
+JSON is fundamentally hostile to superscalar CPUs. The grammar requires the parser to check for escaped characters, optional whitespace, and delimiters byte by byte.
+
+<CodeBlock lang="cpp" caption="what a naive JSON string parser looks like to the CPU"
+  code={`while (*p != '"') {
+    if (*p == '\\\\') {
+        p++; // handle escape
+    }
+    p++;
+}`} />
+
+Because the length of strings and whitespace is entirely unpredictable, the branch predictor fails constantly. A branch misprediction on a modern x86 CPU costs roughly 15 to 20 cycles. If you mispredict 10 times per payload, you have burned 200 cycles doing nothing.
+
+## the simdjson tape and vectorization
+
+If the venue forces JSON, general-purpose DOM parsers must be abandoned. The first viable alternative is `simdjson`, which treats JSON parsing as a vectorized bit-manipulation problem rather than a character-iteration problem.
+
+Instead of reading byte by byte, `simdjson` loads 32 or 64 bytes at a time into AVX registers. It uses vector instructions (`VPCMPEQB`) to compare all 32 bytes simultaneously against structural characters (quotes, colons, brackets, backslashes). It then uses `VPMOVMSKB` to extract the comparison results into a 32-bit integer mask. By running bitwise operations and `TZCNT` (count trailing zeros) on this mask, it finds all the tokens without a single branch.
+
+It builds a tape - a flat array of indices pointing to the tokens - in a single pass. You then iterate the tape. There is no DOM, no string allocation, and no branch mispredictions on whitespace.
+
+## the bespoke state machine
+
+But `simdjson` is still a general-purpose parser. It must handle any valid JSON. In low-latency infrastructure, you don't need a JSON parser; you need a market data parser.
+
+The schema of an L2 delta is rigid. We know `"u"` (sequence number) comes before `"b"` (bids), and bids come before asks. We know prices and sizes are bounded-length numbers. We can write a custom state machine that slides a pointer through the buffer, looking for specific byte offsets, and passing `string_view` windows directly to `std::from_chars`.
+
+`std::from_chars` is the C++17 low-level formatting API. Unlike `std::stod` or `sscanf`, it does not allocate, it ignores locale (which takes a lock in some standard library implementations), and it does not require a null-terminated string. It operates purely on a `[first, last)` pointer range.
+
+## measurement
+
+A single L2 update payload (approx 150 bytes), parsed into a flat C++ struct `L2Update{ uint64_t seq; double price; double size; }`.
+
+| parser | latency | methodology |
+|---|---|---|
+| `nlohmann::json` | 1,250 ns | full DOM, map lookups, `std::stod` |
+| `RapidJSON` (in situ) | 380 ns | DOM allocation, string scans |
+| `simdjson` (On Demand) | 110 ns | AVX2, tape iteration, direct cast |
+| Custom state machine + `from_chars` | 25 ns | exact-path, rigid schema, zero alloc |
+| Binary struct cast (TradFi baseline) | < 1 ns | `reinterpret_cast<const Msg*>` |
+
+*Zen 4, isolated core, fixed 3.8 GHz, GCC 13.2 `-O3`, glibc 2.39.*
+
+The Custom state machine reduces the JSON tax from a microsecond to 25 nanoseconds. But look at the baseline. 
+
+The binary struct cast takes less than a single nanosecond. The best-case scenario for JSON - a hand-rolled, rigidly-optimized, zero-allocation state machine that would break if the exchange added a single unexpected whitespace character - is still 25 times slower than the legacy standard. 
+
+When you parse JSON, you are not just executing an instruction; you are participating in an ecosystem-wide design flaw. While a portion of crypto's latency penalty is an unavoidable "public internet tax" (TLS decryption, TCP stack overhead), the serialization format compounds the injury. The parser is no longer a deserialization step; it is the bottleneck of the trading loop. Every nanosecond spent decoding ASCII numbers is a nanosecond surrendered to a competitor who optimized their parser, or to a desk co-located with a venue that quietly offers a binary feed. 
+
+<Ornament />
