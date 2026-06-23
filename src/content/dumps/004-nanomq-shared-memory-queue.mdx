@@ -78,9 +78,9 @@ understand why, and prove it with numbers.
 The ring buffer wraps using `index & (capacity - 1)` instead of `index %
 capacity`. This is not a micro-optimization: it is a 20 to 40 cycle difference
 per operation on modern x86. A division instruction takes that long. An AND
-takes one cycle. At 100M messages per second, modulo arithmetic costs roughly
-2 microseconds of CPU time per million messages. This is free to eliminate,
-so it was eliminated.
+takes one cycle. At 1M messages, 20 to 40 extra cycles is 20M to 40M wasted
+cycles: roughly 4 to 13 milliseconds on a 3 to 5 GHz core. This is free to
+eliminate, so it was eliminated.
 
 The constraint: capacity must always be a power of two. The API enforces
 this with a `static_assert`.
@@ -91,7 +91,9 @@ If `head` and `tail` share a cache line, every producer write to `head`
 invalidates the consumer's cached copy of that line, and vice versa. This is
 false sharing. The CPU's cache coherence protocol (MESIF on Intel, MOESI on
 AMD) has to bounce that cache line between cores on every update, costing
-roughly 60 to 100ns per operation on a modern desktop.
+roughly 60 to 100ns for a full queue operation under normal desktop
+conditions. In the isolated-core best case measured later on this Ryzen 9 7900,
+the raw invalidation/reload floor is much lower: 7.1ns.
 
 The `char _pad[]` arrays in `SpscQueue` look like dead code. They are not.
 They exist to push `head` and `tail` onto separate 64-byte cache lines,
@@ -171,17 +173,17 @@ queue's ceiling and its behavior under OS scheduling pressure.
 | **Core Isolation** | None (pinned only) | `isolcpus=2,4` (isolated CCX0 cores) |
 | **Page Size** | 4 KB | 2 MB Huge Pages + `mlock` |
 
-**SPSC Initial Latency (64-byte messages, 2M samples):**
+**SPSC Initial Latency (64-byte messages; WSL2: 500K samples, Fedora: 2M samples):**
 
 | Metric | WSL2 (i3-1315U) | Fedora Native (Ryzen 9 7900, Isolated) |
 |:---|:---|:---|
-| min | 44.4 ns | **7.1 ns** |
-| p50 | 546.5 ns | **11.2 ns** |
-| p90 | 833,373 ns | **18.4 ns** |
-| p99 | 1,379,975 ns | **24.5 ns** |
-| p99.9 | 1,412,523 ns | **48.2 ns** |
-| max | 1,417,244 ns | 2,140 ns |
-| mean | 199,279 ns | **12.4 ns** |
+| min | 18 ns | **7.1 ns** |
+| p50 | 39,712 ns | **11.2 ns** |
+| p90 | 92,640 ns | **18.4 ns** |
+| p99 | 238,103 ns | **24.5 ns** |
+| p99.9 | 240,597 ns | **48.2 ns** |
+| max | 241,880 ns | 2,140 ns |
+| mean | 68,417 ns | **12.4 ns** |
 
 The 7.1 ns minimum is the true core-to-core cache line bounce time on Zen 4
 running at 5.4 GHz (a MESIF invalidation and reload over a shared L3). With
@@ -189,10 +191,12 @@ isolated cores, the median and tail latencies align closely with this
 minimum, because the polling thread never yields.
 
 The WSL2 numbers tell a different story: the host and guest schedulers share
-resources and preempt the spin-polling thread. The minimum of 44.4 ns shows
-the mechanism still works, but the p99 blows out to 1.4 ms (the OS scheduled
-something else, and the thread waited). This is the difference between
-understanding the hardware and understanding the operating system.
+resources and preempt the spin-polling thread. The minimum of 18 ns shows
+the mechanism still works, but the p99 blows out to 238 us (the OS scheduled
+something else, and the thread waited). This row uses the 500K WSL2 ceiling
+described in REV.02; beyond that, swap-in and host scheduling noise dominate
+the run. This is the difference between understanding the hardware and
+understanding the operating system.
 
 ### **Lessons from REV.01**
 
