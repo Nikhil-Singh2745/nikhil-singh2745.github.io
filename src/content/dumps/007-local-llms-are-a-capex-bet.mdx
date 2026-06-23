@@ -1,0 +1,289 @@
+---
+title: local LLMs are a capex bet against a subscription
+subtitle: Owning the machine changes the bill. It does not erase it.
+date: 2026-06-23
+tags: [llm, economics, perf, apple-silicon]
+summary: "local LLMs are prepaid infrastructure, not free inference."
+draft: false
+---
+
+<DropCap char="T" />he local LLM argument usually forgets to price the
+machine.
+
+That is the whole trick. The hosted model has an obvious bill because the
+meter is external. The local model feels cheaper because the largest cost
+has already moved into the desk, the power outlet, the SSD, the memory
+system, and the time spent keeping the runtime useful.
+
+There are good reasons to run models locally. Privacy is real.
+Reproducibility is real. Offline use is real. Owning the serving stack can
+matter if the model is part of a system rather than a toy in a text box.
+None of that makes local inference free. It only changes which bottleneck
+gets a receipt.
+
+The claim worth rejecting is not "local models are useful." They are. The
+claim worth rejecting is "local models are the obvious default." That is a
+cost model pretending to be a technical conclusion.
+
+The annoying part is that the slogan is almost right in the cases where it
+matters least as a slogan. Local inference can be excellent when the
+constraints are sharp. It is much less convincing as a general-purpose
+replacement for a frontier model that costs less than dinner for two and
+does not require turning a desktop into a small inference server.
+
+## the machine is part of the model
+
+Take the Mac Studio test box from the previous note: M3 Ultra, 28-core CPU,
+60-core GPU, 32-core Neural Engine, 96GB unified memory, and 1TB SSD. For
+local coding models, that is not a casual machine. It is the platform that
+makes the experiment possible.
+
+The useful way to price that setup is not "how many tokens are free after
+purchase?" The useful question is "how much inference does the box have to
+do before the prepaid bill beats the hosted alternative?"
+
+Suppose the local hardware premium for the relevant machine is `$4,000` to
+`$6,000`, depending on configuration and what would have been bought
+anyway. Ignore resale value for the first pass. Ignore electricity too,
+which is generous to local inference. The monthly amortized cost looks
+like this:
+
+| hardware premium | 12 months | 24 months | 36 months |
+|---:|---:|---:|---:|
+| $4,000 | $333/mo | $167/mo | $111/mo |
+| $5,000 | $417/mo | $208/mo | $139/mo |
+| $6,000 | $500/mo | $250/mo | $167/mo |
+
+A `$20/mo` hosted subscription is not a complete substitute for API
+access, and subscriptions have usage caps, policy constraints, queueing,
+and product decisions attached. But the order of magnitude matters. The
+local box has to beat not one subscription, but many months of hosted
+access before it wins on money alone.
+
+<CodeBlock lang="txt" caption="the local inference break-even shape."
+  code={`monthly_local_cost =
+  hardware_premium / amortization_months
+  + electricity
+  + maintenance_time
+  + quality_penalty
+
+local_wins_on_cost_only_if =
+  monthly_local_cost < hosted_subscription_or_api_bill`} />
+
+That formula is crude in the useful way. It keeps the hidden terms visible.
+If the model is worse, slower, or more fragile, the difference is not a
+vibe. It is a cost.
+
+## utilization is the first trap
+
+Dedicated hardware is only cheap when it is busy. An accelerator sitting
+idle for most of the day is not saving money. It is depreciating quietly.
+
+This is where local inference borrows the economics of servers and then
+forgets the server part. A hosted provider can amortize hardware across
+many users, many workloads, and many time zones. A local desktop mostly
+serves one person, one queue, and one bursty pattern of attention.
+
+| use pattern | local economics |
+|---|---|
+| occasional chat and coding help | bad; the machine is mostly idle |
+| daily coding assistant, light prompts | still hard to justify on cost |
+| sustained batch inference | plausible if quality is acceptable |
+| private repository analysis | plausible because privacy has value |
+| offline or air-gapped workflow | plausible because hosted is unavailable |
+| model/runtime research | plausible because control is the product |
+
+The utilization problem is harsher for coding than for batch inference.
+Coding assistance is interactive and bursty. There is a prompt, then a
+pause while the human reads, edits, runs a test, checks a diff, or changes
+the question. The GPU is expensive during generation and irrelevant during
+thinking time. That is a poor shape for amortizing a large local machine.
+
+The mistake is dividing the hardware cost by theoretical token throughput.
+That is like pricing a car by the maximum speedometer value. The relevant
+denominator is useful tokens actually generated during the machine's
+economic life.
+
+## cheaper tokens can lose
+
+Per-token price is not the same as per-task price. This is the annoying
+part of model economics because it forces quality back into the math.
+
+A weaker local model can be cheaper per generated token and still more
+expensive per completed task if it needs more attempts, more prompt
+context, more tool calls, or more human correction. Coding tasks are
+especially unforgiving because a wrong answer with plausible prose still
+has to be debugged.
+
+| effect | how it shows up |
+|---|---|
+| lower model quality | more failed patches and retries |
+| smaller useful context | more manual retrieval and prompt shaping |
+| slower first token | broken interaction loop |
+| quantization error | subtle identifier or API mistakes |
+| local memory pressure | editor and browser compete with the model |
+| missing frontier capability | tasks that never converge locally |
+
+The frontier comparison matters. A local open-weight model does not have
+to be bad to lose. It only has to be meaningfully worse than the hosted
+model on the task that pays for the tool.
+
+For coding, the true unit is not token. It is accepted change. If the
+hosted model produces a correct patch in one pass and the local model
+needs three turns plus a manual repair, the local tokens were not cheap.
+They were discounted raw material for a more expensive workflow.
+
+<PullQuote cite="cost model">
+  A free token is not free if it buys the wrong patch.
+</PullQuote>
+
+That is why the previous post spends so much time on KV cache and memory
+bandwidth. Those are not implementation trivia. They are the mechanisms
+that turn "free local inference" into first-token latency, reduced
+headroom, context discipline, and quality tradeoffs under quantization.
+
+## the bill moves into systems work
+
+Hosted inference rents someone else's accelerator, scheduler, cache
+manager, model rollout process, monitoring, and failure budget. Local
+inference rents the same ideas back to the user in smaller, rougher form.
+
+The local stack has its own operating costs:
+
+1. choosing a quantization,
+2. finding a runtime that supports the model well,
+3. managing context length,
+4. watching memory pressure,
+5. keeping enough SSD space for checkpoints,
+6. dealing with model format churn,
+7. measuring latency instead of trusting the demo prompt.
+
+None of these is fatal. They are normal systems work. The point is that
+they belong in the price.
+
+On Apple Silicon, the memory system makes the accounting unusually visible.
+Unified memory is pleasant because the GPU and CPU share the same pool. It
+is also blunt because the model, KV cache, browser, editor, filesystem
+cache, compositor, and OS are all drawing from that pool. The model does
+not get a private island just because the token meter disappeared.
+
+<Diagram caption="where the local bill goes" fig="1">
+{`hosted path
+  subscription or API bill
+  -> provider accelerator
+  -> provider serving stack
+  -> frontier model quality
+
+local path
+  hardware premium
+  -> unified memory pressure
+  -> quantization choices
+  -> runtime maintenance
+  -> lower or different model quality
+  -> human correction cost
+
+The invoice changed columns. It did not vanish.`}
+</Diagram>
+
+This is the part the simple argument misses. "No API bill" is a narrow
+statement. It says nothing about utilization, quality, latency, memory,
+ops, or the cost of being wrong.
+
+The local machine also changes the user's job. With hosted inference, the
+annoying work is mostly product selection and prompt discipline. With
+local inference, the annoying work includes model format, quantization,
+runtime support, memory headroom, context shape, and the recurring
+question of whether a newer open-weight model is worth downloading and
+testing. That can be fun. It is still work.
+
+## where local actually wins
+
+Local inference has real winning cases. They are just narrower than the
+marketing version implies.
+
+| requirement | local | hosted |
+|---|---|---|
+| private source stays on the machine | strong | depends on vendor and policy |
+| offline operation | strong | weak |
+| reproducible model and runtime | strong if pinned | weak if product changes |
+| frontier coding quality | usually weak | strong |
+| bursty casual use | weak on cost | strong |
+| high sustained inference | can win | API bill can dominate |
+| no hardware commitment | weak | strong |
+| full serving-stack control | strong | weak |
+
+That table is the actual shape of the decision. Local wins when the
+constraint is control. Hosted wins when the constraint is quality per unit
+of attention.
+
+The privacy case is the cleanest local win. If the source cannot leave the
+machine, the hosted alternative may be unavailable no matter how good the
+model is. Offline use is similar. Reproducibility can also matter: a pinned
+checkpoint and runtime can be more stable than a product endpoint that
+changes under a fixed name.
+
+The high-utilization case is real but narrower. If a machine runs useful
+inference for hours a day and the local model is good enough, the
+amortization can make sense. That is a server argument, not a lifestyle
+argument. The workload has to be large and steady enough to deserve a
+server-shaped answer.
+
+For ordinary interactive coding, the hosted side has a boring advantage:
+the commitment is small, the model is better, and the hardware is someone
+else's problem. Boring advantages count.
+
+This is where the local-default argument usually overreaches. It mistakes
+independence for efficiency. Owning the box is satisfying, but satisfaction
+is not throughput. A workstation that is idle most of the time and running
+a weaker quantized model the rest of the time is not a revolution in
+economics. It is a preference with a purchase order.
+
+The narrow version of the local argument is much stronger: if the source
+cannot leave the machine, if the workload is steady, if the model is good
+enough, or if the point is to control the serving stack, local inference is
+not a compromise. It is the correct architecture. The mistake is promoting
+that architecture to a default after deleting the assumptions that made it
+correct.
+
+## a better default question
+
+The bad default question is:
+
+<CodeBlock lang="txt" caption="the wrong question."
+  code={`Can I run this model locally?`} />
+
+That question only tests feasibility. It does not test whether the choice
+is good.
+
+The better default question is:
+
+<CodeBlock lang="txt" caption="the useful question."
+  code={`What bottleneck am I buying?
+
+hosted:
+  - subscription or API bill
+  - vendor policy
+  - network dependency
+  - less control over model changes
+
+local:
+  - hardware amortization
+  - memory pressure
+  - lower model quality or heavier quantization
+  - runtime maintenance
+  - lower utilization`} />
+
+That version is harder to turn into a slogan, which is a sign that it is
+closer to engineering.
+
+The practical rule is simple: use local models when the non-price
+constraints are the point. Privacy, offline operation, reproducibility,
+serving-stack control, and sustained batch usage can justify the machine.
+If the job is ordinary coding help and the comparison is a frontier model
+behind a low monthly subscription, local has to overcome a large quality
+and utilization deficit before it is the rational default.
+
+The local model may still be worth running. It is just not magic. It is a
+capital expense with a tokenizer attached.
+
+<Ornament />

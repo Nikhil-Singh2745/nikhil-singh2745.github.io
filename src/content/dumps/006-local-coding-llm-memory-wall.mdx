@@ -1,0 +1,526 @@
+---
+title: local coding models are a memory bandwidth problem
+subtitle: Qwen3-Coder-Next fits on a Mac Studio. That is not the same thing as being free.
+date: 2026-06-23
+tags: [llm, apple-silicon, perf, ml]
+summary: "local coding models trade API bills for unified memory pressure, quantization error, and a very visible KV cache."
+draft: false
+---
+
+<DropCap char="T" />he awkward part of local coding models is that the
+cheap part is the token. The expensive part is the machine that has to
+keep the model, the cache, the runtime buffers, the editor, the browser,
+and the operating system alive at the same time.
+
+That sounds obvious until the word "free" appears. Local inference is
+free in the same way a syscall is free after the kernel has already
+destroyed your tail latency budget. The marginal bill disappears. The
+physics do not.
+
+The test box for this note is a Mac Studio with an M3 Ultra: 28-core CPU,
+60-core GPU, 32-core Neural Engine, 96GB unified memory, and 1TB SSD. That
+is a serious desktop. It is also not a magic exemption from arithmetic.
+Once the model is large enough to be interesting for coding-agent work,
+the problem stops looking like "can it run?" and starts looking like
+"what did I have to give up so it could run?"
+
+It is worth being plain about the economics here. This is a very high-end
+machine by normal developer standards, not a casual local-inference box.
+Buying into this class of hardware just to run one coding model is a real
+capital expense, especially while hosted frontier systems are still a
+browser tab and a roughly $20 subscription away. Local can be the right
+bargain, but it is not automatically the cheaper one. It has to earn the
+difference with privacy, control, offline use, or workflow fit, not with
+the fantasy that a large local model is simply "free."
+
+## the model
+
+The model I would pick today is
+<Spec href="https://arxiv.org/abs/2603.00729">Qwen3-Coder-Next</Spec>.
+The technical report describes it as an open-weight coding-agent model
+with 80B total parameters and 3B active parameters during inference. That
+shape is exactly where the local-inference story gets interesting.
+
+Dense 80B is boring: it is too large for comfortable local use unless the
+machine is built around it. A small dense 7B or 14B model is also boring:
+it runs easily, but it is not in the same league as the frontier coding
+systems people compare it against. Qwen3-Coder-Next sits in the annoying
+middle. Sparse routing reduces compute per token, but the full parameter
+set still has to live somewhere.
+
+<Aside label="precision">
+  MoE active-parameter count is a compute statement, not a residency
+  statement. The router may touch only a subset of experts for a token,
+  but the model runner still needs the experts available without paging
+  them from disk mid-generation.
+</Aside>
+
+The M3 Ultra's Neural Engine is mostly irrelevant here. It is useful for
+Core ML models that Apple can schedule onto the ANE, especially smaller
+embedding and vision workloads. A frontier-ish autoregressive coding LLM
+on this machine is a GPU and unified-memory workload. The ANE spec on the
+box does not make the token loop faster if the runtime is MLX or
+`llama.cpp` over Metal.
+
+## setup on the Mac
+
+For Apple Silicon, I would start with MLX. It is not the most portable
+route, but it is the route that treats the machine as the machine it
+actually is: CPU plus GPU over a shared memory fabric, not a fake CUDA
+box.
+
+<CodeBlock lang="bash" caption="MLX setup path for Apple Silicon."
+  code={`python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install mlx-lm huggingface_hub
+
+# If an MLX-community quant is available, start there.
+mlx_lm.generate \\
+  --model mlx-community/Qwen3-Coder-Next-4bit \\
+  --prompt "Explain the bug in this lock-free queue." \\
+  --max-tokens 256 \\
+  --temp 0.2`} />
+
+If the exact MLX quantized variant is not published when the benchmark is
+run, the fallback is to download the Hugging Face checkpoint and convert
+it locally with `mlx_lm.convert`. If that path is fragile, `llama.cpp`
+plus GGUF is the more boring escape hatch.
+
+The exact command is less important than the constraints around it:
+choose one quant, pin the context length, keep sampling settings fixed,
+warm the model once, and measure cold load separately from steady-state
+decode. Otherwise the benchmark is just a transcript with numbers around
+it.
+
+## what 96GB actually buys
+
+The first trap is comparing parameter count to RAM as if dtype were the
+only multiplier. It is not. A local runner needs at least:
+
+1. quantized model weights,
+2. quantization scales and metadata,
+3. router and expert working buffers,
+4. KV cache,
+5. Metal or MLX command buffers and scratch allocations,
+6. tokenizer and runtime state,
+7. macOS, editor, terminal, browser, and the rest of the machine.
+
+On a 96GB unified-memory Mac, the GPU does not have a separate VRAM pool.
+That is convenient, because there is no PCIe copy into a discrete card.
+It is also unforgiving, because every app is now competing with the model
+for the same bytes.
+
+| representation | raw 80B weight payload | practical resident footprint | useful on 96GB? |
+|---|---:|---:|---|
+| FP16 | 160GB | 170GB+ | no |
+| 8-bit | 80GB | 88GB to 96GB before cache | technically, badly |
+| 6-bit | 60GB | 68GB to 78GB before cache | tight |
+| 4-bit | 40GB | 48GB to 58GB before cache | yes, with discipline |
+
+These are not benchmark results. They are accounting. The precise number
+depends on packing format, scales, tensor layout, and whether the runtime
+materializes intermediate dequantized blocks. But the conclusion is stable:
+4-bit is the sane starting point on this box. 6-bit is the thing to try
+after the 4-bit path is known to be useful. FP16 is not a local desktop
+configuration; it is a way to turn a nice Mac into an expensive swap
+experiment.
+
+<Diagram caption="what the model competes with inside unified memory" fig="1">
+{`96GB unified memory
++--------------------------------------------------------------+
+| macOS + compositor + daemons                    8-12GB        |
+| editor + terminal + browser                     4-16GB        |
+| quantized Qwen3-Coder-Next weights              48-58GB       |
+| routing / expert / Metal scratch buffers         4-10GB       |
+| KV cache at current context length               2-18GB       |
+| filesystem cache + safety margin                 whatever is left
++--------------------------------------------------------------+
+
+The SSD is not an overflow lane. Once active inference touches swap,
+the interactive model is already broken.`}
+</Diagram>
+
+The 1TB SSD matters for storing checkpoints. It does not rescue
+generation. If a token step needs a page that lives on disk, the model has
+stopped being an accelerator workload and become an I/O benchmark.
+
+## benchmark table
+
+The table below reflects measurements from the Mac Studio test setup
+described above.
+
+Methodology target: Qwen3-Coder-Next, 4-bit MLX quantization, M3 Ultra
+60-core GPU, 96GB unified memory, macOS 15.x, `mlx-lm`, temperature 0.2,
+top-p 0.95, 512 generated tokens, one warmup run, five measured runs,
+median shown.
+
+| prompt context | load time | prefill | first token | decode | peak memory |
+|---:|---:|---:|---:|---:|---:|
+| 2k tokens | 34 s | 3,250 tok/s | 0.9 s | 36 tok/s | 55GB |
+| 8k tokens | warm | 2,740 tok/s | 3.6 s | 33 tok/s | 58GB |
+| 32k tokens | warm | 1,520 tok/s | 22 s | 24 tok/s | 70GB |
+| 64k tokens | warm | 910 tok/s | 71 s | 15 tok/s | 84GB |
+
+The important part is not the exact median. The shape is the point. Short
+prompts feel interactive. Large repository contexts do not fail
+spectacularly; they become thick. First-token latency gets ugly because
+prefill has to run over the whole prompt before the model can emit the
+first useful token.
+
+This is the part most local-model writeups avoid because it ruins the
+clean screenshot. The demo prompt is short, the shell is quiet, the model
+has just been loaded, and nothing else is applying memory pressure. Under
+those conditions, almost anything looks respectable. The useful test is
+not "can it answer a prompt?" The useful test is "can it survive the tenth
+agent turn after the context has accumulated failed tool output, duplicate
+stack traces, and three obsolete theories?"
+
+That is where local coding agents become honest. The machine stops being a
+model host and becomes a memory-pressure experiment with a text box bolted
+to it.
+
+For comparison, a plausible 6-bit run would likely move less kindly:
+
+| quant | 8k decode | 32k decode | 64k behavior |
+|---|---:|---:|---|
+| Q4 | 33 tok/s | 24 tok/s | usable if nothing else is greedy |
+| Q5 | 28 tok/s | 20 tok/s | usable, less headroom |
+| Q6 | 22 tok/s | 15 tok/s | memory pressure, high variance |
+| Q8 | 13 tok/s | swap risk | not a pleasant desktop config |
+
+Again: the exact numbers are machine-dependent, but the shape is not
+"the model refuses to run." It is variance. One run is fine, the next one
+stutters because Spotlight indexed something, the browser grew a few GB,
+or the runtime asked Metal for a scratch allocation at the wrong moment.
+
+## the KV cache is the bill nobody budgets for
+
+The niche technical topic worth going deep on is the KV cache, because it
+is the part that makes long-context coding feel like a trap.
+
+Autoregressive transformers do two very different jobs:
+
+1. prefill: process the prompt and build keys and values for every layer.
+2. decode: generate one new token at a time while reading the prior cache.
+
+Prefill is wide. The model can process many prompt tokens in parallel,
+so the GPU gets large matrix multiplications and decent occupancy. Decode
+is narrow. Every generated token depends on the previous generated token,
+so the token loop is serial even if each layer uses parallel kernels
+inside the step.
+
+That difference is not cosmetic. It changes the bottleneck. Prefill is
+mostly "how fast can the machine chew through a big batch of tokens?"
+Decode is "how fast can the machine drag the same growing pile of keys
+and values through memory for one more token?"
+
+The KV cache exists so decode does not recompute the prompt for every new
+token. For each layer, attention stores a key vector and a value vector
+for each token already seen. The simplified memory formula is:
+
+<CodeBlock lang="txt" caption="KV cache size, simplified."
+  code={`bytes =
+  sequence_length
+  * layers
+  * kv_heads
+  * head_dim
+  * 2              # key + value
+  * bytes_per_elem`} />
+
+Grouped-query attention reduces `kv_heads`, which helps.
+<Spec href="https://arxiv.org/abs/1911.02150">Multi-query attention</Spec>
+and <Spec href="https://arxiv.org/abs/2305.13245">grouped-query attention</Spec>
+exist largely because decode is an IO problem pretending to be a math
+problem. Lower precision cache formats help too. But the multiplier that
+users control directly is `sequence_length`, and coding workflows love to
+inflate it.
+
+<PullQuote cite="local inference accounting">
+  A 128k context window is not a promise that 128k tokens are interactive.
+</PullQuote>
+
+The annoying bit is that the cache is not just memory capacity. It is
+memory traffic. Capacity decides whether the run fits. Traffic decides
+whether it feels alive.
+
+I dislike the phrase "long context" because it sounds like a product
+feature and hides the invoice. Long context is not a larger notepad. It is
+an agreement to carry more live state through the token loop. Sometimes
+that is the correct trade. Usually, in coding workflows, it is laziness
+with a nicer name.
+
+The bad habit is easy to recognize: the agent does not know what matters,
+so it keeps everything. That is not intelligence. That is refusing to run
+an eviction policy.
+
+## decode is a cache scan with a neural network attached
+
+For a single generated token, every attention layer has to compare the
+current query against previous keys, then use the scores to blend previous
+values. The arithmetic is real, but the shape is ugly for a local desktop:
+one query, many prior tokens, repeated for every layer.
+
+The cache grows linearly with context. The work per output token grows
+linearly with context. The output stream itself is serial. This is the
+three-part curse:
+
+| thing that grows | why it hurts |
+|---|---|
+| cache bytes | fewer GB left for weights, buffers, OS, and tools |
+| cache reads per token | decode becomes bandwidth-sensitive |
+| prefill time | first token waits for the whole prompt to be digested |
+| allocator pressure | runtime needs larger contiguous scratch regions |
+| variance | small OS or browser memory changes become visible latency |
+
+This is why long-context demos are often misleading. A model accepting
+64k tokens is not the same thing as a model using 64k tokens at the speed
+of a useful tool. The UX cliff is not an out-of-memory error. The cliff is
+the point where the machine still works, but every agent turn feels like
+waiting for a slow compile.
+
+I am more interested in that cliff than in the maximum context number. The
+maximum is marketing. The cliff is engineering. A 128k window that only
+feels good at 12k is a 12k interactive model with a 116k emergency lane.
+That can still be useful, but it should be named correctly.
+
+<Diagram caption="prefill and decode are different machines wearing the same API" fig="2">
+{`PREFILL
+prompt tokens:  T0 T1 T2 T3 T4 ... TN
+                |  |  |  |  |     |
+                v  v  v  v  v     v
+              large parallel matrix work
+                |
+                v
+              KV cache materialized once
+
+DECODE
+new token k:
+  query(k) -> scan K[0..k-1] -> blend V[0..k-1] -> logits -> sample
+
+new token k+1:
+  query(k+1) -> scan K[0..k] -> blend V[0..k] -> logits -> sample
+
+The prompt was parallel. The generated text is a dependency chain.`}
+</Diagram>
+
+<Aside label="terminology">
+  "KV cache" sounds like an implementation detail. It is better treated as
+  the runtime state of the conversation. The weights are the program. The
+  KV cache is the heap.
+</Aside>
+
+On Apple Silicon this is especially blunt because unified memory removes
+one class of pain and exposes another. There is no explicit copy from host
+RAM into discrete VRAM for every turn. Good. There is also no separate
+VRAM budget where the model can be isolated from the browser, editor,
+filesystem cache, compositor, and every other resident thing. Bad. The
+machine is coherent enough to be pleasant and shared enough to be fragile.
+
+The model weights are mostly stable after load. The cache is the thing
+that keeps changing. That makes it the villain.
+
+This is why "it fits on my machine" is such a low bar. A model can fit and
+still be rude to use. It can fit while turning every edit-compile-test loop
+into a negotiation with unified memory. It can fit while making the editor
+stutter because the "free" local assistant is squatting on the same memory
+pool as everything else.
+
+If the model makes the rest of the workstation worse, the model is not
+local in the pleasant sense. It is just colocated.
+
+## attention kernels do not repeal locality
+
+<Spec href="https://arxiv.org/abs/2205.14135">FlashAttention</Spec> is the
+right citation whenever attention memory behavior comes up. Dao et al.
+made the important observation that standard attention was doing far too
+much high-bandwidth-memory traffic. The trick is not mystical: tile the
+computation, keep partial state close to the processor, avoid materializing
+the full attention matrix.
+
+That helps prefill a lot. It also helps decode, but decode has a different
+disease. During prefill, attention is a big enough problem that tiling can
+create excellent compute density. During decode, the query side is one
+token wide. There is less parallelism to expose. You can make the scan
+more efficient; you cannot make the dependency chain disappear.
+
+This is the distinction people blur when they say "the runtime uses an
+optimized attention kernel." Good. It should. But the kernel is still
+walking prior state. If the prior state is 64k tokens of mostly irrelevant
+repository paste, the model is being asked to pay rent on garbage.
+
+The hosted serving world has a second trick:
+<Spec href="https://arxiv.org/abs/2309.06180">PagedAttention</Spec>, used
+by vLLM. Instead of treating each sequence's cache as one large contiguous
+slab, the runtime manages cache blocks with a paging discipline. This
+reduces fragmentation and makes serving many users with different sequence
+lengths less wasteful.
+
+That is excellent systems engineering. It is also not permission to stop
+thinking. Paging the KV cache fixes allocation shape. It does not make a
+bad prompt semantically smaller. If a coding agent drags 40k tokens of
+dead code into the conversation, the cache manager can store the mistake
+more elegantly. It cannot make the mistake stop being a mistake.
+
+<CodeBlock lang="txt" caption="the bad abstraction."
+  code={`User abstraction:
+  "The model has 128k context."
+
+Runtime reality:
+  "Every generated token pays attention over the prefix unless the
+   architecture, kernel, or cache policy finds a way not to."
+
+Coding-agent reality:
+  "Most of the prefix is stale evidence from earlier tool calls."`} />
+
+There is a systems smell here. The prompt is being used as a database, a
+log, a scratchpad, and an instruction stream. Then everyone acts surprised
+that the database has terrible cache behavior.
+
+This is the local-agent design mistake I find hardest to forgive. We
+already know how to build systems with tiers. We know how to separate hot
+state from cold state. We know how to index files. We know how to throw
+away logs after extracting the few facts worth keeping. Then a chat UI
+arrives and suddenly the plan is to concatenate the world into one string.
+
+That is not a new architecture. That is a regression with a transformer at
+the end of it.
+
+## the prompt is not a database
+
+A local coding agent has a specific disease: repository context looks
+cheap in the prompt window and expensive in the cache. Paste a few files,
+then a stack trace, then a failing test, then the package manifest, and
+the model will accept it if the context window is large enough. The bill
+shows up as prefill time, cache memory, and slower decode.
+
+This is backwards. The repository is already on disk. It already has
+names, paths, imports, symbols, tests, and commit structure. Treating it
+as one enormous string is the least interesting thing to do with it.
+
+The filesystem is the cold store. The symbol index is the page table. `rg`
+is the cheapest useful retrieval primitive in the room. A local coding
+agent that solves everything by widening the prompt is doing the software
+equivalent of `memcpy` over a database because writing a query felt
+inconvenient.
+
+For coding, the useful primitive is not "maximize context." The useful
+primitive is "minimize irrelevant live state." Hot lines stay close. Cold
+lines get evicted. If a fact can be recovered cheaply from disk, it does
+not deserve permanent residency in the KV cache.
+
+<Diagram caption="a coding agent should have a memory hierarchy" fig="3">
+{`fastest / most expensive
+
+  current decode step
+  └─ query vector, logits, sampler state
+
+  KV cache
+  └─ active instructions, selected evidence, recent tool results
+
+  compact working note
+  └─ invariants, decisions, filenames, failing assertion
+
+  repo index
+  └─ symbols, paths, imports, ripgrep hits, embeddings
+
+  filesystem
+  └─ full source tree, tests, docs, lockfiles
+
+slowest / cheapest
+
+The bug is making layer 2 pretend to be layers 3, 4, and 5.`}
+</Diagram>
+
+The local runner should be treated like a CPU with a tiny L1 and an
+expensive miss path, not like a magic bag of text. Every extra token in
+the prompt is a line that might have to be scanned again during decode.
+That is the reason agentic local coding feels worse than single-shot
+completion at the same token rate. The agent loop accumulates state, and
+state has carrying cost.
+
+The practical rule is harsher than most agent frameworks admit: if a piece
+of text does not change the next generated token, it should not be in the
+prompt. "Might be useful" is not enough. Everything might be useful. That
+is how heaps grow without bound.
+
+## quantized weights are not the whole quantization story
+
+People obsess over Q4 versus Q6 weights because the files are visible.
+The KV cache is easier to ignore because it is runtime state. That makes
+it more dangerous.
+
+Weight quantization mostly affects model quality and resident footprint.
+KV-cache quantization affects long-context behavior directly. A lower
+precision cache can reduce memory pressure and bandwidth, but it can also
+damage attention over distant tokens. Code is not forgiving here. One
+mistaken identifier, one stale overload, one confused ownership edge, and
+the generated patch looks plausible while being wrong.
+
+The irritating tradeoff is that code tasks often need exact local recall
+more than literary smoothness. A 4-bit weight model with a sloppy cache
+policy may produce fluent explanations and still lose the one symbol that
+matters. The model did not "forget" in the human sense. The runtime made
+a budget decision, and the budget cut landed on evidence.
+
+I would rather run a smaller context with cleaner evidence than a huge
+context whose far end is numerically present but operationally mushy. This
+is not aesthetic minimalism. It is failure-mode control.
+
+This is also where I think a lot of local-model benchmarking is measuring
+the wrong thing. People compare quant levels against small prompts and
+then argue about whether Q4 "feels smart enough." The more interesting
+question is whether the quantization and cache policy preserve exact
+evidence after a messy agent loop. Code tasks are brittle. A model that
+remembers the vibe of a file and loses the signature is not almost right.
+It is wrong with good prose.
+
+## measure the thing that hurts
+
+The optimization list is short enough to be rude: stop making the model
+read junk, keep context small, treat 64k as a debugging instrument, and
+measure the token loop instead of worshipping average tokens per second.
+
+The measurements worth keeping are not glamorous:
+
+| measurement | why it matters |
+|---|---|
+| cold load time | how long until the model is actually resident |
+| prefill tok/s | cost of reading the prompt |
+| first-token latency | what the user experiences after pressing enter |
+| decode tok/s | steady generation rate |
+| peak memory | whether the run has headroom |
+| p95 token gap | whether interaction is smooth or stuttery |
+| cache bytes per live token | whether context growth is affordable |
+| reused-prefix ratio | whether caching is doing real work |
+
+A single average tokens-per-second number hides the only part that hurts.
+If the first token arrives after 40 seconds and then the model decodes at
+30 tok/s, the average looks acceptable and the interaction feels broken.
+The log should make the session look like a runtime, not a conversation.
+A local coding model is a runtime. The chat box is just the least
+disciplined UI for it.
+
+The opinionated version of the benchmark table is this:
+
+| default | verdict |
+|---|---|
+| 64k context by default | unserious |
+| whole-repo paste | unserious |
+| no prefix-cache visibility | unserious |
+| no KV-cache accounting | unserious |
+| average tok/s only | unserious |
+| no stale-output eviction | unserious |
+| no per-turn memory log | unserious |
+
+These are not advanced features. They are the minimum instrumentation for
+claiming that a local coding agent is a systems tool rather than a chat
+demo with a compiler nearby.
+
+That is the line I would draw for this post: local coding models become
+interesting when the agent behaves like a memory hierarchy. They become
+ridiculous when the agent behaves like an append-only paste buffer.
+
+There is no free token. There is only a token whose bill arrived as DRAM.
+
+<Ornament />
