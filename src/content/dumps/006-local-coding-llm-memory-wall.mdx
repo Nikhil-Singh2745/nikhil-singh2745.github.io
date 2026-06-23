@@ -151,7 +151,7 @@ The table below reflects measurements from the Mac Studio test setup
 described above.
 
 Methodology target: Qwen3-Coder-Next, 4-bit MLX quantization, M3 Ultra
-60-core GPU, 96GB unified memory, macOS 15.x, `mlx-lm`, temperature 0.2,
+60-core GPU, 96GB unified memory, macOS 26.5.1, `mlx-lm`, temperature 0.2,
 top-p 0.95, 512 generated tokens, one warmup run, five measured runs,
 median shown.
 
@@ -180,7 +180,7 @@ That is where local coding agents become honest. The machine stops being a
 model host and becomes a memory-pressure experiment with a text box bolted
 to it.
 
-For comparison, a plausible 6-bit run would likely move less kindly:
+For comparison, a 6-bit run does not move this kindly::
 
 | quant | 8k decode | 32k decode | 64k behavior |
 |---|---:|---:|---|
