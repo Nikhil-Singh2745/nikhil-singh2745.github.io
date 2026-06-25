@@ -2,6 +2,7 @@
 title: the userspace spinlock is a bet against the scheduler
 subtitle: spin if you own the core. sleep if you share it. there is no third answer.
 date: 2026-06-01
+section: writing
 tags: [concurrency, linux, perf]
 summary: "a userspace spinlock wins or collapses by ~100×, decided by one fact you rarely control: can the scheduler preempt the lock holder."
 ---

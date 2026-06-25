@@ -1,0 +1,316 @@
+---
+title: Qwen3.6-27B made the local coding argument less obvious
+subtitle: The model is small enough to run well and sharp enough to compare against cloud coding models.
+date: 2026-06-25
+section: tinkering
+tags: [llm, coding, apple-silicon, perf, ml]
+summary: "Qwen3.6-27B is not a frontier cloud model, but for code it is efficient enough to change the local trade."
+draft: false
+---
+
+<DropCap char="I" /> was too pessimistic about local coding models in one
+specific way.
+
+The earlier notes were still right about the economics. Local inference is
+a capital expense. Unified memory is not free. Long context becomes KV-cache
+debt. A Mac Studio does not turn a weak model into a good coding agent.
+
+The part I would change is the implied quality curve. I treated local coding
+models as if they mostly lived below the threshold where the memory and
+latency trade was worth taking seriously. Qwen3.6-27B breaks that framing.
+Not for general chat. Not for open-ended product judgment. For coding.
+
+The interesting thing is not that a 27B model runs locally. Plenty of 27B
+models run locally. The interesting thing is that this one is useful enough
+at patch generation that the comparison is no longer "local toy versus
+real cloud model." The comparison becomes "efficient local model versus
+cloud frontier model, with different bottlenecks."
+
+## the benchmark shape
+
+The test box is a Mac Studio with an M3 Ultra: 28-core CPU, 60-core GPU,
+32-core Neural Engine, 96GB unified memory, and 1TB SSD.
+
+The local row uses Qwen3.6-27B through MLX on Metal. The cloud rows are not
+local baselines. They are remote coding-model runs with the same task
+packets: selected files, failing command, failure output, and a patch
+request. Network time is included because it is part of using a cloud model.
+
+| setting | value |
+|---|---|
+| local runtime | MLX, Metal backend |
+| local quantization | 4-bit weights, 8-bit KV cache |
+| local sampling | temperature 0.15, top-p 0.95 |
+| generated cap | 512 tokens per turn |
+| local warmup | one unmeasured run |
+| measured runs | seven per task, median shown |
+| task acceptance | tests pass and diff stays inside requested scope |
+
+The task set is deliberately boring. That is the point. A coding model earns
+trust on boring work before it earns trust on heroic work.
+
+| bucket | tasks | examples |
+|---|---:|---|
+| C++ correctness | 18 | ownership, iterators, atomics, parser edge cases |
+| Python async | 14 | cancellation, backpressure, FastAPI lifecycle bugs |
+| build/tooling | 12 | CMake, package scripts, generated include paths |
+| test repair | 16 | failing assertions, fixtures, flaky timing assumptions |
+| refactor-with-tests | 10 | narrow extraction, allocation removal, API cleanup |
+
+The metric is not tokens per second. Tokens per second is a runtime metric.
+Coding needs a task metric.
+
+<CodeBlock lang="txt" caption="the metric that matters."
+  code={`accepted_patch_rate =
+  accepted_tasks / attempted_tasks
+
+cost_per_accepted_patch =
+  total_wall_seconds / accepted_tasks
+
+local_efficiency =
+  accepted_tasks / (peak_resident_GB * total_wall_seconds)`} />
+
+That last line is crude, but useful. It punishes a local model for occupying
+memory while it works. A 27B model gets to compete because its resident
+footprint is small enough that the denominator does not explode.
+
+## headline results
+
+| model path | accepted patches | median turns | median wall time | p95 wall time | local peak memory |
+|---|---:|---:|---:|---:|---:|
+| Claude Sonnet cloud | 83% | 1.2 | 41 s | 118 s | n/a |
+| GPT-class cloud coding model | 86% | 1.1 | 39 s | 104 s | n/a |
+| Gemini Pro cloud | 78% | 1.4 | 48 s | 141 s | n/a |
+| Qwen3.6-27B local | 74% | 1.6 | 54 s | 132 s | 31GB |
+| Qwen3-Coder-Next local, Q4 | 58% | 2.3 | 96 s | 251 s | 58GB |
+
+The cloud models still win. They should. They are larger systems with
+better tool use, better long-horizon planning, and provider-side serving
+infrastructure. The point is that Qwen3.6-27B is close enough on contained
+coding tasks that the local trade stops being embarrassing.
+
+The older local baseline is the important contrast. Qwen3.6-27B is not just
+faster because it is smaller. It is better per resident GB. It loses less
+often, needs fewer repair turns, and leaves the workstation with enough
+headroom that the model does not feel like it is squatting on the machine.
+
+<PullQuote cite="benchmark result">
+  Qwen3.6-27B does not beat the cloud frontier. It makes the cloud frontier
+  look less inevitable on small, well-scoped code changes.
+</PullQuote>
+
+## context scaling
+
+The 27B model's advantage disappears if the harness abuses context. That is
+good, because it keeps the previous memory-wall argument intact.
+
+| prompt context | prefill | first token | decode | peak memory | accepted patch rate |
+|---:|---:|---:|---:|---:|---:|
+| 2k tokens | 4,850 tok/s | 0.42 s | 54 tok/s | 24GB | 79% |
+| 8k tokens | 4,020 tok/s | 1.35 s | 49 tok/s | 27GB | 76% |
+| 16k tokens | 3,210 tok/s | 3.4 s | 43 tok/s | 32GB | 72% |
+| 32k tokens | 2,070 tok/s | 11.8 s | 34 tok/s | 43GB | 61% |
+| 64k tokens | 1,160 tok/s | 39.5 s | 22 tok/s | 61GB | 44% |
+
+The model is best when the prompt is small and selected. The cliff is not
+subtle: 2k to 16k feels like an interactive coding tool; 32k is a tolerable
+debugging lane; 64k is an admission that retrieval failed.
+
+<Diagram caption="Qwen3.6-27B is good when the prompt is a working set" fig="1">
+{`repo on disk
+  -> rg / symbol index / failing test
+  -> 4k-12k selected evidence
+  -> Qwen3.6-27B
+  -> patch
+  -> test
+  -> keep summary, evict log noise
+
+The prompt is the hot set.
+The repository is storage.
+Do not swap the two.`}
+</Diagram>
+
+This is also where the cloud comparison is slightly unfair in both
+directions. Cloud models tolerate messy context better, but they also make
+it easier to hide bad harness design behind raw capability. Qwen3.6-27B
+forces discipline. If the right files are present, it is surprisingly good.
+If the prompt is a landfill, it decays quickly.
+
+## where the local model wins time
+
+The wall-time table hides a smaller fact: Qwen3.6-27B has better local loop
+latency once the model is resident.
+
+| operation | Qwen3.6-27B local | cloud coding model |
+|---|---:|---:|
+| send selected context | local memory copy | 1.1-3.8 s upload/API overhead |
+| first token at 8k | 1.35 s | 3.4-7.9 s |
+| apply patch | local | local |
+| rerun failing test | local | local |
+| second turn with compact summary | 8-24 s | 18-46 s |
+
+The cloud model can spend those seconds better because it is smarter. That
+is why it still wins the aggregate table. But for small patches, the local
+model's lower loop latency matters. The interaction becomes:
+
+<CodeBlock lang="txt" caption="the local coding loop."
+  code={`select evidence
+generate patch
+apply
+test
+summarize failure if needed
+retry with a smaller prompt`} />
+
+That loop is not glamorous. It is exactly where a local model should be
+good: repository-local, test-driven, low-latency, and narrow.
+
+## why 27B can be this good at code
+
+A 27B model should not be casually compared with a cloud frontier model if
+the task is "be generally intelligent." Coding is more structured than that.
+
+Code has properties that reward specialization:
+
+| property | why it helps a smaller model |
+|---|---|
+| syntax is rigid | invalid output fails quickly |
+| tests provide an oracle | the model can be judged by execution |
+| repositories have structure | filenames, imports, symbols, and types guide retrieval |
+| diffs are local | many tasks touch one or two functions |
+| APIs repeat | common library idioms compress well into training |
+| compiler errors are dense | a short diagnostic often contains the next edit |
+
+That is the first reason Qwen3.6-27B works: coding is not unconstrained
+conversation. The search space is narrower, and the feedback is harsher.
+
+The second reason is that 27B is a sweet spot for this machine. It is large
+enough to keep useful code priors, but small enough that the memory system
+does not dominate every turn.
+
+| resident item | Qwen3.6-27B | larger local coding model |
+|---|---:|---:|
+| quantized weights and scales | 16-19GB | 48-58GB |
+| runtime scratch | 3-6GB | 4-10GB |
+| 16k KV cache | 4-7GB | 6-10GB |
+| 32k KV cache | 8-13GB | 10-18GB |
+| desktop headroom on 96GB | large | narrow |
+
+The third reason is more interesting: the model seems unusually good at
+patch shape. It tends to edit fewer lines than the larger local baseline,
+keeps naming consistent, and is less eager to replace a local bug with a
+new abstraction. That matters more than prose quality.
+
+| behavior | Qwen3.6-27B local | larger local baseline |
+|---|---|---|
+| narrow diffs | usually | often expands scope |
+| compiler-error repair | strong | decent |
+| C++ ownership edges | good | uneven |
+| async cancellation | good with selected context | often hand-wavy |
+| unfamiliar APIs | weak | weak |
+| long architectural changes | weak | weak |
+
+The weakness column matters. Qwen3.6-27B is not secretly a cloud flagship
+model. It is a sharp coding model inside a constrained harness. That is a
+different object.
+
+## one systems example
+
+Here is the kind of patch where the model earns trust.
+
+The writer in this ring buffer copies bytes, publishes `tail`, and only
+then writes the length. The release store is in the wrong place.
+
+<CodeBlock lang="cpp" caption="bug: the publish edge happens before slot metadata is complete."
+  code={`bool push(const void* src, uint32_t n) {
+    auto t = tail_.load(std::memory_order_relaxed);
+    auto next = (t + 1) & mask_;
+
+    if (next == head_.load(std::memory_order_acquire)) {
+        return false;
+    }
+
+    auto& slot = slots_[t];
+    std::memcpy(slot.bytes, src, n);
+
+    tail_.store(next, std::memory_order_release);
+    slot.len = n;
+    return true;
+}`} />
+
+The good patch is boring:
+
+<CodeBlock lang="cpp" caption="fix: finish the slot before the release-store."
+  code={`bool push(const void* src, uint32_t n) {
+    auto t = tail_.load(std::memory_order_relaxed);
+    auto next = (t + 1) & mask_;
+
+    if (next == head_.load(std::memory_order_acquire)) {
+        return false;
+    }
+
+    auto& slot = slots_[t];
+    std::memcpy(slot.bytes, src, n);
+    slot.len = n;
+
+    tail_.store(next, std::memory_order_release);
+    return true;
+}`} />
+
+Qwen3.6-27B usually finds that edit if the prompt includes the reader and
+the failing stress test. The important part is what it does not do. It does
+not make every field atomic. It does not add a mutex. It does not rewrite
+the queue. It moves the store that belongs before the publish edge.
+
+That is why the benchmark result is believable. The model is not winning by
+being profound. It is winning by being locally precise.
+
+## where the cloud still wins
+
+The cloud models are still better at tasks where the correct edit depends
+on information outside the prompt or on long-horizon planning.
+
+| task | cloud advantage |
+|---|---|
+| unknown library behavior | stronger learned API prior |
+| multi-file design change | better planning and consistency |
+| large failing logs | better compression of evidence |
+| ambiguous requirements | better product judgment |
+| mixed code and prose | better instruction following |
+| long agentic sessions | better recovery from earlier mistakes |
+
+This is why I would not replace a frontier coding subscription with
+Qwen3.6-27B and declare victory. That would be the same mistake in the
+other direction. The cloud model remains the better default for hard,
+ambiguous, cross-repository work.
+
+The update is narrower and more useful: for repository-local coding tasks
+with tests, Qwen3.6-27B is efficient enough that local inference is not just
+a privacy/control choice. It is sometimes the lower-friction tool.
+
+## the corrected rule
+
+The old rule was:
+
+<CodeBlock lang="txt" caption="old rule."
+  code={`Run local models when privacy, offline use, reproducibility,
+or serving-stack control matters enough to pay for the machine.`} />
+
+The corrected rule is:
+
+<CodeBlock lang="txt" caption="corrected rule for coding."
+  code={`Run Qwen3.6-27B locally when:
+  - the task is code,
+  - the repository is already on the machine,
+  - the harness can keep context under roughly 16k tokens,
+  - tests or compiler errors provide an oracle,
+  - and cloud-level ambiguity handling is not required.`} />
+
+That is not a slogan. It is a deployment condition.
+
+The capex argument still stands. The memory-wall argument still stands.
+Qwen3.6-27B just found a profitable gap between them: small enough to stay
+pleasant on the M3 Ultra, strong enough at code to make cloud comparison
+interesting, and disciplined enough with the right harness to produce
+accepted patches instead of expensive local text.
+
+<Ornament />

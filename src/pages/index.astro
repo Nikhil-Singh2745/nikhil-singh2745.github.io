@@ -2,15 +2,12 @@
 import PageLayout from "@/layouts/PageLayout.astro";
 import Cover from "@/components/home/Cover.astro";
 import Manifest from "@/components/home/Manifest.astro";
+import ProjectCta from "@/components/home/ProjectCta.astro";
 import LatestRibbon from "@/components/home/LatestRibbon.astro";
 import { getCollection } from "astro:content";
 
 const dumps = (await getCollection("dumps", ({ data }) => !data.draft)).sort(
-  (a, b) => {
-    if (a.data.featured && !b.data.featured) return -1;
-    if (!a.data.featured && b.data.featured) return 1;
-    return a.id.localeCompare(b.id);
-  }
+  (a, b) => b.data.date.getTime() - a.data.date.getTime()
 );
 
 const recent = dumps;
@@ -21,5 +18,6 @@ const asOf = dumps[0]?.data.date ?? new Date();
 <PageLayout title="coredump: low-level notes" pageKind="cover">
   <Cover issueNumber={Math.max(1, issueNumber)} asOfDate={asOf} />
   <Manifest />
+  <ProjectCta />
   <LatestRibbon entries={recent} />
 </PageLayout>

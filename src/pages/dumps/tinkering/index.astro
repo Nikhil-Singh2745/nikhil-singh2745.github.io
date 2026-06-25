@@ -1,0 +1,11 @@
+---
+import PageLayout from "@/layouts/PageLayout.astro";
+import WritingSectionList from "@/components/writing/WritingSectionList.astro";
+import { getCollection } from "astro:content";
+
+const entries = await getCollection("dumps", ({ data }) => !data.draft);
+---
+
+<PageLayout title="tinkering - coredump" pageKind="writing">
+  <WritingSectionList entries={entries} section="tinkering" />
+</PageLayout>

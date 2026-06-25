@@ -1,0 +1,87 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<section class="project-cta">
+  <div class="shell">
+    <a class="project-cta__panel" href={`${base}/writing/projects/`}>
+      <div class="project-cta__side">
+        <div class="meta">projects / work / research</div>
+        <span class="project-cta__mark mono">featured shelf</span>
+      </div>
+      <div class="project-cta__body">
+        <h2 class="project-cta__title">Looking for built work?</h2>
+        <p class="project-cta__copy">
+          Project notes, research artifacts, source links, and the systems that
+          leave the page and become something inspectable.
+        </p>
+      </div>
+      <span class="project-cta__button mono">go to projects -></span>
+    </a>
+  </div>
+</section>
+
+<style>
+  .project-cta {
+    padding-block: 2.25rem;
+  }
+  .project-cta__panel {
+    display: grid;
+    grid-template-columns: 13rem minmax(0, 1fr) auto;
+    gap: 2rem;
+    align-items: center;
+    border: 1px solid var(--color-ink);
+    background: var(--color-paper-warm);
+    box-shadow: 4px 4px 0 0 var(--color-ink);
+    padding: 1.25rem;
+    transition:
+      transform 220ms var(--ease-out-expo),
+      box-shadow 220ms var(--ease-out-expo);
+  }
+  .project-cta__panel:hover,
+  .project-cta__panel:focus-visible {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 var(--color-ink);
+  }
+  .project-cta__side {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .project-cta__mark {
+    color: var(--color-ink);
+    font-size: 0.72rem;
+  }
+  .project-cta__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 96, "wght" 560;
+    font-size: clamp(1.45rem, 2.6vw, 2rem);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .project-cta__copy {
+    font-family: var(--font-serif);
+    color: var(--color-muted);
+    font-size: 0.98rem;
+    line-height: 1.5;
+    max-width: 56ch;
+    margin: 0.55rem 0 0;
+  }
+  .project-cta__button {
+    border: 1px solid var(--color-ink);
+    background: var(--color-paper);
+    padding: 0.55rem 0.75rem;
+    white-space: nowrap;
+    font-size: 0.78rem;
+  }
+
+  @media (max-width: 62rem) {
+    .project-cta__panel {
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+    .project-cta__button {
+      width: fit-content;
+    }
+  }
+</style>

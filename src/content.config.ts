@@ -7,10 +7,13 @@ const dumps = defineCollection({
     title: z.string(),
     subtitle: z.string().optional(),
     date: z.coerce.date(),
+    section: z.enum(["project", "tinkering", "writing"]),
     tags: z.array(z.string()).default([]),
     summary: z.string(),
     draft: z.boolean().default(false),
     featured: z.boolean().default(false),
+    sourceUrl: z.string().url().optional(),
+    sourceLabel: z.string().optional(),
   }),
 });
 

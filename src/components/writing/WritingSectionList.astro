@@ -1,0 +1,214 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { formatShortDate } from "@/utils/romanNumerals";
+import { writingSections, type WritingSection } from "@/lib/writingSections";
+
+interface Props {
+  entries: CollectionEntry<"dumps">[];
+  section: WritingSection;
+}
+
+const { entries, section } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const copy = writingSections[section];
+const sectionEntries = entries
+  .filter((entry) => entry.data.section === section)
+  .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+---
+
+<section class="wsl">
+  <header class="wsl__head">
+    <div class="shell wsl__head-inner">
+      <a class="wsl__back mono" href={`${base}/writing/`}>&larr; writing index</a>
+      <div class="meta">{copy.eyebrow}</div>
+      <h1 class="wsl__title">
+        {copy.title} <span class="wsl__count mono">[{sectionEntries.length}]</span>
+      </h1>
+      <p class="wsl__lede">{copy.description}</p>
+    </div>
+    <hr class="hairline" />
+  </header>
+
+  <div class="shell wsl__body">
+    {sectionEntries.length === 0 ? (
+      <p class="wsl__empty mono">nothing here yet</p>
+    ) : (
+      <ol class="wsl__list">
+        {sectionEntries.map((entry) => (
+          <li class="wsl__item">
+            <article class="wsl__row">
+              <a href={`${base}/writing/${entry.id}/`} class="wsl__link">
+                <div class="wsl__row-main">
+                  <h2 class="wsl__row-title">{entry.data.title}</h2>
+                  {entry.data.subtitle && (
+                    <p class="wsl__row-subtitle">{entry.data.subtitle}</p>
+                  )}
+                  <p class="wsl__row-summary">{entry.data.summary}</p>
+                </div>
+                <div class="wsl__row-meta">
+                  <span class="wsl__label">{copy.label}</span>
+                  <time class="mono">{formatShortDate(entry.data.date)}</time>
+                </div>
+              </a>
+              {entry.data.sourceUrl && (
+                <a
+                  href={entry.data.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="wsl__source mono"
+                >
+                  {entry.data.sourceLabel ?? "source"}
+                </a>
+              )}
+            </article>
+          </li>
+        ))}
+      </ol>
+    )}
+  </div>
+</section>
+
+<style>
+  .wsl {
+    padding-block: 2.5rem 4rem;
+  }
+  .wsl__head-inner {
+    padding-bottom: 1.5rem;
+  }
+  .wsl__back {
+    display: inline-block;
+    color: var(--color-muted);
+    margin-bottom: 2rem;
+    transition: color 180ms var(--ease-out-expo);
+  }
+  .wsl__back:hover {
+    color: var(--color-ink);
+  }
+  .wsl__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 300, "SOFT" 20;
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    margin: 0.4rem 0 0.85rem;
+  }
+  .wsl__count {
+    color: var(--color-muted);
+    font-size: 0.45em;
+    vertical-align: 0.7em;
+    margin-left: 0.4em;
+  }
+  .wsl__lede {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--color-muted);
+    max-width: 52ch;
+    margin: 0;
+    line-height: 1.5;
+  }
+  .wsl__body {
+    padding-block: 3rem 1rem;
+  }
+  .wsl__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-top: 1px solid var(--color-hairline);
+  }
+  .wsl__item {
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .wsl__row {
+    padding-block: 1.1rem;
+  }
+  .wsl__link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 9rem;
+    gap: 1.5rem;
+    align-items: start;
+  }
+  .wsl__row-title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 96, "wght" 540;
+    font-size: clamp(1.2rem, 2vw, 1.45rem);
+    line-height: 1.18;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .wsl__row-subtitle {
+    margin: 0.35rem 0 0;
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--color-muted);
+    font-size: 0.92rem;
+    line-height: 1.35;
+  }
+  .wsl__row-summary {
+    margin: 0.55rem 0 0;
+    font-family: var(--font-serif);
+    color: var(--color-ink);
+    font-size: 0.92rem;
+    line-height: 1.5;
+    max-width: 64ch;
+  }
+  .wsl__row-meta {
+    display: grid;
+    gap: 0.5rem;
+    justify-items: end;
+    color: var(--color-muted);
+    font-size: 0.72rem;
+    padding-top: 0.2rem;
+  }
+  .wsl__label {
+    font-family: var(--font-sans);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    border: 1px solid var(--color-hairline);
+    padding: 0.12rem 0.45rem;
+    color: var(--color-muted);
+  }
+  .wsl__source {
+    width: fit-content;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.85rem;
+    font-size: 0.75rem;
+    color: var(--color-ink);
+    border: 1px solid var(--color-hairline);
+    padding: 0.3rem 0.6rem;
+    background: var(--color-paper);
+    transition: all 180ms var(--ease-out-expo);
+  }
+  .wsl__source:hover,
+  .wsl__link:hover .wsl__row-title {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .wsl__source:hover {
+    border-color: var(--color-ink);
+    transform: translateY(-1px);
+    box-shadow: 2px 2px 0 0 var(--color-ink);
+  }
+  .wsl__empty {
+    color: var(--color-muted);
+    border-top: 1px solid var(--color-hairline);
+    margin: 0;
+    padding-top: 1rem;
+    font-size: 0.75rem;
+  }
+
+  @media (max-width: 48rem) {
+    .wsl__link {
+      grid-template-columns: 1fr;
+    }
+    .wsl__row-meta {
+      justify-items: start;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+  }
+</style>

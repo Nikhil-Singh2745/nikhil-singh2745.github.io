@@ -1,0 +1,194 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { writingSectionOrder, writingSections } from "@/lib/writingSections";
+
+interface Props {
+  entries: CollectionEntry<"dumps">[];
+}
+
+const { entries } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const sections = writingSectionOrder.map((section) => ({
+  section,
+  ...writingSections[section],
+  count: entries.filter((entry) => entry.data.section === section).length,
+}));
+---
+
+<section class="wi">
+  <header class="wi__head">
+    <div class="shell wi__head-inner">
+      <div>
+        <div class="meta">writing index</div>
+        <h1 class="wi__title">
+          choose a shelf <span class="wi__count mono">[{entries.length}]</span>
+        </h1>
+        <p class="wi__lede">
+          project notes, tinkering logs, and longer systems writing are filed
+          separately so the index stays navigable as it grows.
+        </p>
+      </div>
+    </div>
+    <hr class="hairline" />
+  </header>
+
+  <div class="shell wi__sections">
+    {entries.length === 0 ? (
+      <p class="wi__empty">
+        nothing filed yet.
+        <br />
+        <span class="mono">no entries</span>
+      </p>
+    ) : (
+      <ol class="wi__grid" aria-label="writing sections">
+        {sections.map((group) => (
+          <li class={`wi__card ${group.section === "project" ? "wi__card--project" : ""}`}>
+            <a href={`${base}/writing/${group.slug}/`} class="wi__card-link">
+              <div class="wi__card-top">
+                <div class="meta">{group.eyebrow}</div>
+                <div class="wi__card-count mono">{group.count}</div>
+              </div>
+              <h2 class="wi__card-title">{group.title}</h2>
+              <p class="wi__card-copy">{group.description}</p>
+              <span class="wi__card-action mono">open section -></span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    )}
+  </div>
+</section>
+
+<style>
+  .wi {
+    padding-block: 2.5rem 4rem;
+  }
+  .wi__head-inner {
+    padding-bottom: 1.5rem;
+  }
+  .wi__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 300, "SOFT" 20;
+    font-size: clamp(2.5rem, 7vw, 5rem);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    margin: 0.4rem 0 0.85rem;
+  }
+  .wi__count {
+    color: var(--color-muted);
+    font-size: 0.45em;
+    vertical-align: 0.7em;
+    margin-left: 0.4em;
+  }
+  .wi__lede {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--color-muted);
+    max-width: 48ch;
+    margin: 0;
+    line-height: 1.5;
+  }
+  .wi__sections {
+    padding-block: 3rem 1rem;
+  }
+  .wi__grid {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+    padding: 0;
+    margin: 0;
+  }
+  .wi__card {
+    border: 1px solid var(--color-hairline);
+    background: var(--color-paper);
+    min-height: 21rem;
+    transition:
+      transform 220ms var(--ease-out-expo),
+      box-shadow 220ms var(--ease-out-expo),
+      border-color 220ms var(--ease-out-expo);
+  }
+  .wi__card--project {
+    border-color: var(--color-ink);
+    background: var(--color-paper-warm);
+    box-shadow: 4px 4px 0 0 var(--color-ink);
+  }
+  .wi__card:hover,
+  .wi__card:focus-within {
+    transform: translate(-2px, -2px);
+    border-color: var(--color-ink);
+    box-shadow: 4px 4px 0 0 var(--color-ink);
+  }
+  .wi__card-link {
+    min-height: inherit;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+  }
+  .wi__card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+  }
+  .wi__card-count {
+    border: 1px solid var(--color-hairline);
+    min-width: 2.25rem;
+    padding: 0.25rem 0.45rem;
+    text-align: center;
+    color: var(--color-muted);
+    background: var(--color-paper);
+  }
+  .wi__card--project .wi__card-count {
+    border-color: var(--color-ink);
+    color: var(--color-ink);
+  }
+  .wi__card-title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 96, "wght" 560;
+    font-size: clamp(1.65rem, 3vw, 2.35rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    margin: 3rem 0 0;
+  }
+  .wi__card-copy {
+    font-family: var(--font-serif);
+    color: var(--color-muted);
+    font-size: 0.98rem;
+    line-height: 1.5;
+    margin: 1rem 0 2rem;
+  }
+  .wi__card-action {
+    margin-top: auto;
+    color: var(--color-ink);
+    font-size: 0.78rem;
+  }
+  .wi__empty {
+    text-align: center;
+    padding: 6rem 0;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1.5rem;
+    line-height: 1.6;
+    color: var(--color-muted);
+  }
+  .wi__empty .mono {
+    font-style: normal;
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+  }
+
+  @media (max-width: 62rem) {
+    .wi__grid {
+      grid-template-columns: 1fr;
+    }
+    .wi__card {
+      min-height: 16rem;
+    }
+    .wi__card-title {
+      margin-top: 2rem;
+    }
+  }
+</style>

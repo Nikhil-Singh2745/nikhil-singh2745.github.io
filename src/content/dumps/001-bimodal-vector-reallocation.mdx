@@ -2,6 +2,7 @@
 title: the bimodal cost of `std::vector` reallocation
 subtitle: one missing `noexcept` decides whether you copy or move.
 date: 2026-05-31
+section: writing
 tags: [c++, perf, stdlib]
 summary: vector reallocation either moves or copies. one missing `noexcept` decides which, and a 40× slowdown rides on it.
 ---

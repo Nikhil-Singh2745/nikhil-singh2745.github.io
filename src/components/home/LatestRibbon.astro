@@ -1,79 +1,85 @@
 ---
 import type { CollectionEntry } from "astro:content";
 import { formatEntryDate } from "@/utils/romanNumerals";
+import { writingSections } from "@/lib/writingSections";
 
 interface Props {
   entries: CollectionEntry<"dumps">[];
 }
+
 const { entries } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const recommendations = entries.map((entry) => ({
+  title: entry.data.title,
+  subtitle: entry.data.subtitle ?? "",
+  summary: entry.data.summary,
+  date: formatEntryDate(entry.data.date),
+  section: writingSections[entry.data.section].label,
+  href: `${base}/writing/${entry.id}/`,
+}));
+const fallback = recommendations[0] ?? null;
 ---
 
-<section class="ribbon">
+<section class="ribbon" data-random-recommendation>
   <div class="shell">
     <header class="ribbon__head">
-      <div class="ribbon__label meta">on the corkboard · most recent</div>
-      <a class="ribbon__all mono" href={`${base}/dumps/`}>see all →</a>
+      <div>
+        <div class="ribbon__label meta">random writing</div>
+        <p class="ribbon__hint">one entry to read next. refresh for another.</p>
+      </div>
+      <a class="ribbon__all mono" href={`${base}/writing/`}>browse shelves -></a>
     </header>
     <hr class="hairline" />
 
-    <ol class="ribbon__list">
-      {
-        entries.map((e, i) => (
-          <li class={`ribbon__item ${e.data.featured ? "ribbon__item--featured" : ""}`}>
-            <a href={`${base}/dumps/${e.id}/`} class="ribbon__link">
-              <span class="ribbon__num">{String(i + 1).padStart(2, "0")}</span>
-              <div class="ribbon__body">
-                {e.data.featured && (
-                  <span class="ribbon__featured-badge mono">// FOCUS: SYSTEM ENTRY</span>
-                )}
-                <h3 class="ribbon__title">{e.data.title}</h3>
-                {e.data.subtitle && (
-                  <p class="ribbon__sub">{e.data.subtitle}</p>
-                )}
-                <p class="ribbon__summary">{e.data.summary}</p>
-              </div>
-              <div class="ribbon__meta">
-                <time class="mono">{formatEntryDate(e.data.date)}</time>
-                {e.data.tags.length > 0 && (
-                  <span class="ribbon__tags">
-                    {e.data.tags.slice(0, 3).map((t) => (
-                      <span class="ribbon__tag">{t}</span>
-                    ))}
-                  </span>
-                )}
-              </div>
-            </a>
-            {
-              e.id === "004-nanomq-shared-memory-queue" && (
-                <div class="ribbon__github-banner">
-                  <a
-                    href="https://github.com/Nikhil-Singh2745/nanomq"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="mono ribbon__github-link"
-                  >
-                    <svg
-                      class="ribbon__github-icon"
-                      viewBox="0 0 16 16"
-                      width="14"
-                      height="14"
-                      fill="currentColor"
-                    >
-                      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-                    </svg>
-                    GitHub: Nikhil-Singh2745/nanomq →
-                  </a>
-                </div>
-              )
-            }
-            <hr class="hairline" />
-          </li>
-        ))
-      }
-    </ol>
+    {fallback ? (
+      <article class="ribbon__card">
+        <a href={fallback.href} class="ribbon__link" data-rec-link>
+          <span class="ribbon__num mono">pick</span>
+          <div class="ribbon__body">
+            <h3 class="ribbon__title" data-rec-title>{fallback.title}</h3>
+            <p
+              class={`ribbon__sub ${fallback.subtitle ? "" : "ribbon__sub--empty"}`}
+              data-rec-subtitle
+            >
+              {fallback.subtitle}
+            </p>
+            <p class="ribbon__summary" data-rec-summary>{fallback.summary}</p>
+          </div>
+          <div class="ribbon__meta">
+            <time class="mono" data-rec-date>{fallback.date}</time>
+            <span class="ribbon__tag" data-rec-section>{fallback.section}</span>
+          </div>
+        </a>
+      </article>
+    ) : (
+      <p class="ribbon__empty mono">nothing filed yet</p>
+    )}
   </div>
 </section>
+
+<script define:vars={{ recommendations }}>
+  const card = document.querySelector("[data-random-recommendation]");
+
+  if (card && recommendations.length > 0) {
+    const pick = recommendations[Math.floor(Math.random() * recommendations.length)];
+    const link = card.querySelector("[data-rec-link]");
+    const title = card.querySelector("[data-rec-title]");
+    const subtitle = card.querySelector("[data-rec-subtitle]");
+    const summary = card.querySelector("[data-rec-summary]");
+    const date = card.querySelector("[data-rec-date]");
+    const section = card.querySelector("[data-rec-section]");
+
+    if (link) link.setAttribute("href", pick.href);
+    if (title) title.textContent = pick.title;
+    if (subtitle) {
+      subtitle.textContent = pick.subtitle;
+      subtitle.classList.toggle("ribbon__sub--empty", pick.subtitle.length === 0);
+    }
+    if (summary) summary.textContent = pick.summary;
+    if (date) date.textContent = pick.date;
+    if (section) section.textContent = pick.section;
+  }
+</script>
 
 <style>
   .ribbon {
@@ -82,20 +88,27 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   .ribbon__head {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: end;
+    gap: 1.5rem;
     padding-block: 1rem 0.75rem;
+  }
+  .ribbon__hint {
+    font-family: var(--font-serif);
+    color: var(--color-muted);
+    font-size: 0.95rem;
+    font-style: italic;
+    margin: 0.35rem 0 0;
   }
   .ribbon__all {
     color: var(--color-muted);
     transition: color 180ms var(--ease-out-expo);
+    white-space: nowrap;
   }
   .ribbon__all:hover {
     color: var(--color-ink);
   }
-  .ribbon__list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+  .ribbon__card {
+    border-bottom: 1px solid var(--color-hairline);
   }
   .ribbon__link {
     display: grid;
@@ -105,22 +118,18 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     align-items: start;
   }
   .ribbon__num {
-    font-family: var(--font-serif);
-    font-variation-settings: "opsz" 144, "wght" 220;
-    font-size: 2rem;
-    line-height: 1;
     color: var(--color-muted);
-    font-variant-numeric: tabular-nums;
+    font-size: 0.78rem;
+    padding-top: 0.4rem;
   }
   .ribbon__title {
     font-family: var(--font-serif);
     font-variation-settings: "opsz" 96, "wght" 540;
-    font-size: clamp(1.25rem, 2.2vw, 1.6rem);
-    line-height: 1.18;
-    letter-spacing: -0.012em;
+    font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+    line-height: 1.16;
+    letter-spacing: -0.01em;
     margin: 0;
     color: var(--color-ink);
-    transition: text-decoration-color 180ms;
   }
   .ribbon__sub {
     margin: 0.35rem 0 0;
@@ -128,6 +137,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     font-style: italic;
     font-size: 0.95rem;
     color: var(--color-muted);
+  }
+  .ribbon__sub--empty {
+    display: none;
   }
   .ribbon__summary {
     margin: 0.65rem 0 0;
@@ -145,12 +157,6 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     align-content: start;
     padding-top: 0.4rem;
   }
-  .ribbon__tags {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    justify-content: flex-end;
-  }
   .ribbon__tag {
     font-family: var(--font-sans);
     font-size: 0.65rem;
@@ -165,92 +171,25 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     text-decoration-thickness: 1px;
     text-underline-offset: 4px;
   }
+  .ribbon__empty {
+    color: var(--color-muted);
+    padding-block: 1.5rem;
+  }
 
   @media (max-width: 56rem) {
+    .ribbon__head,
     .ribbon__link {
-      grid-template-columns: 3rem 1fr;
+      grid-template-columns: 1fr;
+    }
+    .ribbon__head {
+      display: grid;
+    }
+    .ribbon__link {
       gap: 1rem;
     }
     .ribbon__meta {
-      grid-column: 2;
       text-align: left;
       justify-items: start;
-    }
-    .ribbon__tags {
-      justify-content: flex-start;
-    }
-  }
-
-  .ribbon__github-banner {
-    display: flex;
-    justify-content: flex-start;
-    padding-left: 5.5rem;
-    padding-bottom: 1.5rem;
-    margin-top: -0.75rem;
-  }
-  @media (max-width: 56rem) {
-    .ribbon__github-banner {
-      padding-left: 4rem;
-      padding-bottom: 1.25rem;
-      margin-top: -1.25rem;
-    }
-  }
-  .ribbon__github-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.75rem;
-    color: var(--color-ink);
-    border: 1px solid var(--color-hairline);
-    padding: 0.3rem 0.6rem;
-    background: var(--color-paper);
-    transition: all 180ms var(--ease-out-expo);
-  }
-  .ribbon__github-link:hover {
-    border-color: var(--color-ink);
-    transform: translateY(-1px);
-    box-shadow: 2px 2px 0 0 var(--color-ink);
-  }
-  .ribbon__github-icon {
-    display: inline-block;
-    vertical-align: middle;
-  }
-
-  .ribbon__item--featured {
-    background: var(--color-paper-warm);
-    border: 1px solid var(--color-ink);
-    margin-block: 1.5rem;
-    padding-inline: 1.5rem;
-    box-shadow: 4px 4px 0 0 var(--color-ink);
-    transition: transform 240ms var(--ease-out-expo),
-      box-shadow 240ms var(--ease-out-expo);
-  }
-  .ribbon__item--featured:hover,
-  .ribbon__item--featured:focus-within {
-    transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 0 var(--color-ink);
-  }
-  .ribbon__item--featured .hairline {
-    display: none;
-  }
-  .ribbon__featured-badge {
-    display: inline-block;
-    font-size: 0.7rem;
-    color: var(--color-ink);
-    font-weight: 600;
-    margin-bottom: 0.4rem;
-    letter-spacing: 0.08em;
-  }
-  @media (max-width: 36rem) {
-    .ribbon__item--featured {
-      padding-inline: 1rem;
-      margin-block: 1rem;
-      box-shadow: 3px 3px 0 0 var(--color-ink);
-    }
-    .ribbon__item--featured:hover,
-    .ribbon__item--featured:focus-within {
-      transform: translate(-1px, -1px);
-      box-shadow: 4px 4px 0 0 var(--color-ink);
     }
   }
 </style>

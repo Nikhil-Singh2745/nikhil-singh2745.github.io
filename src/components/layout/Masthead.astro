@@ -5,12 +5,15 @@ const path = Astro.url.pathname;
 
 const links = [
   { href: `${base}/`, label: "cover" },
-  { href: `${base}/dumps/`, label: "dumps" },
+  { href: `${base}/writing/`, label: "writing" },
   { href: `${base}/colophon/`, label: "colophon" },
 ];
 
 function isActive(href: string): boolean {
   if (href === `${base}/`) return path === "/" || path === `${base}/`;
+  if (href === `${base}/writing/`) {
+    return path === href || path.startsWith(href) || path.startsWith(`${base}/dumps/`);
+  }
   return path === href || path.startsWith(href);
 }
 ---
