@@ -6,19 +6,35 @@ import ReadingProgress from "@/components/entry/ReadingProgress.astro";
 import "@/styles/prose.css";
 import type { CollectionEntry } from "astro:content";
 
+type Entry = CollectionEntry<"dumps"> | CollectionEntry<"research">;
+
 interface Props {
-  entry: CollectionEntry<"dumps">;
+  entry: Entry;
   index: number;
   readingMinutes: number;
-  prev: CollectionEntry<"dumps"> | null;
-  next: CollectionEntry<"dumps"> | null;
+  prev: Entry | null;
+  next: Entry | null;
+  sectionHref?: string;
+  sectionLabel?: string;
+  entryBasePath?: string;
+  pageKind?: "entry" | "research";
 }
 
-const { entry, index, readingMinutes, prev, next } = Astro.props;
+const {
+  entry,
+  index,
+  readingMinutes,
+  prev,
+  next,
+  sectionHref,
+  sectionLabel = "all writing",
+  entryBasePath = "writing",
+  pageKind = "entry",
+} = Astro.props;
 const { title, subtitle, date, tags, summary, sourceUrl, sourceLabel } = entry.data;
 ---
 
-<PageLayout title={`${title} - coredump`} description={summary} pageKind="entry">
+<PageLayout title={`${title} - coredump`} description={summary} pageKind={pageKind}>
   <ReadingProgress />
   <article class="entry">
     <EntryHeader
@@ -28,6 +44,8 @@ const { title, subtitle, date, tags, summary, sourceUrl, sourceLabel } = entry.d
       date={date}
       tags={tags}
       readingMinutes={readingMinutes}
+      backHref={sectionHref}
+      backLabel={sectionLabel}
     />
 
     <div class="entry__body">
@@ -60,7 +78,14 @@ const { title, subtitle, date, tags, summary, sourceUrl, sourceLabel } = entry.d
       </div>
     </div>
 
-    <EntryFooter prev={prev} next={next} />
+    <EntryFooter
+      prev={prev}
+      next={next}
+      indexHref={sectionHref}
+      indexLabel={sectionLabel}
+      entryBasePath={entryBasePath}
+      navLabel={`adjacent ${sectionLabel}`}
+    />
   </article>
 </PageLayout>
 

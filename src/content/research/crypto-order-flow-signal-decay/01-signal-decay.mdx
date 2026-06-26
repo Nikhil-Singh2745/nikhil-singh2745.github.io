@@ -1,0 +1,83 @@
+---
+title: Measuring order-flow signal decay in crypto, at the second scale
+subtitle: How fast does aggressive order flow stop predicting price, and what that implies for an execution budget.
+date: 2026-06-26
+tags: [crypto, microstructure, signals]
+summary: A first measurement of how quickly an order-flow imbalance signal loses predictive power on BTCUSDT, using public Binance kline data. Peak predictive power sits near a 5-second horizon and halves by 20 seconds.
+draft: false
+featured: false
+sourceUrl: https://api.binance.com/api/v3/klines
+sourceLabel: Binance public klines API
+---
+
+<DropCap char="A" /> predictive signal is only worth the horizon over which it stays
+informative. In execution that horizon is the whole game: a signal that predicts price
+ten seconds out is a different instrument from one that predicts it ten milliseconds
+out, because the second number has to clear the latency of computing, transmitting, and
+placing an order before any edge is left. This note measures the decay of one common
+signal, order-flow imbalance, on a liquid crypto pair, and sets up the question that
+actually matters: does the surviving edge clear transaction costs.
+
+## context
+
+The signal is a per-second order-flow imbalance proxy. Using one-second bars, define
+net aggressive flow as twice the taker-buy base volume minus total base volume, so a
+positive value means aggressive buying dominated that second and a negative value means
+aggressive selling did. The scale-free version divides by total volume. Both are
+standard microstructure constructions.
+
+The data is public: Binance's klines endpoint, one-second interval, symbol BTCUSDT,
+6000 bars spanning roughly 100 minutes on 2026-06-26. This is a single pair over a
+single window. It is a first look, not a claim about the market in general.
+
+<Aside label="scope">
+  One-second bars measure decay at the second scale, not the sub-millisecond scale a
+  colocated stack lives in. Probing the fast end needs tick-level order book data, which
+  klines cannot provide. That is a deliberate boundary of this measurement, not an
+  oversight.
+</Aside>
+
+## findings
+
+Predictive power is measured as the information coefficient, the Spearman rank
+correlation between the signal at time t and the forward log-return over a horizon of h
+seconds. The signed-volume signal gives:
+
+<CodeBlock lang="text" code={`horizon   IC
+   1s    +0.073
+   2s    +0.120
+   3s    +0.135
+   5s    +0.137   <- peak
+  10s    +0.090
+  20s    +0.062
+  30s    +0.038
+  60s    +0.024
+ 120s    -0.002
+ 300s    -0.018`} />
+
+The shape is momentum then reversion. Predictive power climbs to a peak near a
+five-second horizon, falls to half its peak by twenty seconds, and turns slightly
+negative past two minutes. The late sign flip is consistent with transient price impact
+partially reverting after a burst of aggressive flow.
+
+With 6000 observations the standard error on a correlation is about one over the square
+root of the sample size, near 0.013, so a peak IC of 0.137 is on the order of ten
+standard errors. Within this window it is a real relationship, not sampling noise. The
+scale-free imbalance ratio shows the same timing with a lower peak near 0.095, which
+suggests the magnitude of flow, not only its direction, carries information.
+
+The signal itself barely persists. Its autocorrelation is near zero within a few
+seconds, so the value is not in the signal repeating but in its near-immediate link to
+price.
+
+## what this does not show
+
+An information coefficient bounds an opportunity. It is not a profit. A peak at five
+seconds says nothing about whether the trade makes money once taker fees, the spread
+paid on entry and exit, and market impact are charged against it. That subtraction, the
+net-of-cost crossover, is the next step: take the published taker fee, estimate the
+half-spread from sampled depth, and ask whether the five to twenty second usable band
+survives. A signal can be highly significant and still sit entirely inside the cost
+band, in which case it is real and worthless at once.
+
+<Ornament />

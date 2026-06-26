@@ -8,17 +8,29 @@ interface Props {
   date: Date;
   tags: string[];
   readingMinutes: number;
+  backHref?: string;
+  backLabel?: string;
 }
 
-const { number, title, subtitle, date, tags, readingMinutes } = Astro.props;
+const {
+  number,
+  title,
+  subtitle,
+  date,
+  tags,
+  readingMinutes,
+  backHref,
+  backLabel = "all writing",
+} = Astro.props;
 const num = String(number).padStart(3, "0");
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const resolvedBackHref = backHref ?? `${base}/writing/`;
 ---
 
 <header class="eh">
   <div class="shell">
     <div class="eh__bar">
-      <a href={`${base}/writing/`} class="eh__back mono">← all writing</a>
+      <a href={resolvedBackHref} class="eh__back mono">← {backLabel}</a>
       <div class="eh__bar-meta mono">
         № {num} · <time datetime={formatIso(date)}>{formatEntryDate(date)}</time> ·
         {readingMinutes} min

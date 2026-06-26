@@ -1,0 +1,33 @@
+---
+title: Research note title
+subtitle: Optional short subtitle.
+date: 2026-06-26
+tags: [systems, ml]
+summary: One or two sentences that explain the technical question, result, or implementation note.
+draft: true
+featured: false
+sourceUrl: https://example.com
+sourceLabel: reference
+---
+
+<DropCap char="T" />his draft file documents the format for research notes.
+Keep `draft: true` until the note is ready to publish.
+Place related notes in the same topic folder, using numeric filename prefixes for
+reading order, for example `topic-name/02-next-step.mdx`.
+
+## context
+
+State the technical problem, constraints, and why the result matters.
+
+## findings
+
+Use normal MDX and the existing entry components:
+
+<Aside label="note">
+  Keep public copy independent and avoid employer-specific context unless it is
+  intentionally part of the published note.
+</Aside>
+
+<CodeBlock lang="ts" code={`const example = "research note";`} />
+
+<Ornament />

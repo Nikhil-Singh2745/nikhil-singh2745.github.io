@@ -1,0 +1,220 @@
+---
+import PageLayout from "@/layouts/PageLayout.astro";
+import { getCollection } from "astro:content";
+import { getResearchProjects } from "@/lib/researchProjects";
+import { formatShortDate } from "@/utils/romanNumerals";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+export async function getStaticPaths() {
+  const entries = await getCollection("research", ({ data }) => !data.draft);
+  const projects = getResearchProjects(entries);
+
+  return projects.map((project) => ({
+    params: { topic: project.slug },
+    props: { project },
+  }));
+}
+
+const { project } = Astro.props;
+---
+
+<PageLayout
+  title={`${project.title} - research - coredump`}
+  description={project.latest.data.summary}
+  pageKind="research"
+>
+  <section class="rp">
+    <header class="rp__head">
+      <div class="shell rp__head-inner">
+        <a href={`${base}/research/`} class="rp__back mono">&lt;- all research projects</a>
+        <div class="meta">research project</div>
+        <h1 class="rp__title">
+          {project.title} <span class="rp__count mono">[{project.entries.length}]</span>
+        </h1>
+        <p class="rp__lede">{project.latest.data.summary}</p>
+      </div>
+      <hr class="hairline" />
+    </header>
+
+    <div class="shell rp__body">
+      <ol class="rp__list">
+        {project.entries.map((entry, index) => (
+          <li class="rp__item">
+            <article class="rp__row">
+              <a href={`${base}/research/${entry.id}/`} class="rp__link">
+                <div class="rp__number mono">{String(index + 1).padStart(2, "0")}</div>
+                <div class="rp__main">
+                  <div class="rp__kicker">
+                    {entry.data.featured && <span class="rp__featured">featured</span>}
+                    <time class="mono">{formatShortDate(entry.data.date)}</time>
+                  </div>
+                  <h2 class="rp__row-title">{entry.data.title}</h2>
+                  {entry.data.subtitle && (
+                    <p class="rp__row-subtitle">{entry.data.subtitle}</p>
+                  )}
+                  <p class="rp__summary">{entry.data.summary}</p>
+                </div>
+                <div class="rp__meta">
+                  {entry.data.tags.map((tag) => (
+                    <span class="rp__tag">{tag}</span>
+                  ))}
+                </div>
+              </a>
+            </article>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+</PageLayout>
+
+<style>
+  .rp {
+    padding-block: 2.5rem 4rem;
+  }
+  .rp__head-inner {
+    padding-bottom: 1.5rem;
+  }
+  .rp__back {
+    display: inline-flex;
+    width: fit-content;
+    margin-bottom: 1.4rem;
+    border: 1px solid var(--color-hairline);
+    padding: 0.35rem 0.65rem;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-size: 0.72rem;
+    transition: all 180ms var(--ease-out-expo);
+  }
+  .rp__back:hover {
+    border-color: var(--color-ink);
+    transform: translateY(-1px);
+    box-shadow: 2px 2px 0 0 var(--color-ink);
+  }
+  .rp__title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 144, "wght" 320, "SOFT" 10;
+    font-size: clamp(2.4rem, 6.5vw, 5rem);
+    line-height: 0.96;
+    margin: 0.4rem 0 0.85rem;
+    max-width: 12ch;
+  }
+  .rp__count {
+    color: var(--color-muted);
+    font-size: 0.36em;
+    vertical-align: 0.8em;
+    margin-left: 0.3em;
+  }
+  .rp__lede {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--color-muted);
+    font-size: 1rem;
+    line-height: 1.5;
+    max-width: 58ch;
+    margin: 0;
+  }
+  .rp__body {
+    padding-block: 3rem 1rem;
+  }
+  .rp__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-top: 2px solid var(--color-ink);
+  }
+  .rp__item {
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .rp__link {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr) 15rem;
+    gap: 1.4rem;
+    align-items: start;
+    padding-block: 1.2rem;
+  }
+  .rp__number {
+    color: var(--color-muted);
+    font-size: 0.78rem;
+    padding-top: 0.25rem;
+  }
+  .rp__kicker {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    color: var(--color-muted);
+    font-size: 0.72rem;
+    margin-bottom: 0.45rem;
+  }
+  .rp__featured,
+  .rp__tag {
+    font-family: var(--font-sans);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.62rem;
+    border: 1px solid var(--color-hairline);
+    color: var(--color-muted);
+    padding: 0.12rem 0.45rem;
+  }
+  .rp__featured {
+    border-color: var(--color-ink);
+    color: var(--color-ink);
+  }
+  .rp__row-title {
+    font-family: var(--font-serif);
+    font-variation-settings: "opsz" 96, "wght" 540;
+    font-size: clamp(1.35rem, 2.4vw, 1.8rem);
+    line-height: 1.16;
+    margin: 0;
+  }
+  .rp__link:hover .rp__row-title {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .rp__row-subtitle {
+    margin: 0.35rem 0 0;
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--color-muted);
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+  .rp__summary {
+    margin: 0.65rem 0 0;
+    max-width: 64ch;
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .rp__meta {
+    display: flex;
+    justify-content: flex-end;
+    align-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding-top: 0.25rem;
+  }
+
+  @media (max-width: 56rem) {
+    .rp__link {
+      grid-template-columns: 2.4rem minmax(0, 1fr);
+      gap: 1rem;
+    }
+    .rp__meta {
+      grid-column: 2;
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 36rem) {
+    .rp__link {
+      grid-template-columns: 1fr;
+    }
+    .rp__number,
+    .rp__meta {
+      grid-column: auto;
+    }
+  }
+</style>

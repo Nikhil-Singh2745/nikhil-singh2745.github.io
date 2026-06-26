@@ -1,0 +1,21 @@
+---
+import PageLayout from "@/layouts/PageLayout.astro";
+import ResearchIndex from "@/components/research/ResearchIndex.astro";
+import { getCollection } from "astro:content";
+
+const entries = (await getCollection("research", ({ data }) => !data.draft)).sort(
+  (a, b) => {
+    if (a.data.featured && !b.data.featured) return -1;
+    if (!a.data.featured && b.data.featured) return 1;
+    return b.data.date.getTime() - a.data.date.getTime();
+  },
+);
+---
+
+<PageLayout
+  title="research notes - coredump"
+  description="Applied technical investigations, implementation notes, and systems research."
+  pageKind="research"
+>
+  <ResearchIndex entries={entries} />
+</PageLayout>

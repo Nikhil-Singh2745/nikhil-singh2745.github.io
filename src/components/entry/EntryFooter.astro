@@ -2,12 +2,27 @@
 import type { CollectionEntry } from "astro:content";
 import { formatEntryDate } from "@/utils/romanNumerals";
 
+type Entry = CollectionEntry<"dumps"> | CollectionEntry<"research">;
+
 interface Props {
-  prev: CollectionEntry<"dumps"> | null;
-  next: CollectionEntry<"dumps"> | null;
+  prev: Entry | null;
+  next: Entry | null;
+  indexHref?: string;
+  indexLabel?: string;
+  entryBasePath?: string;
+  navLabel?: string;
 }
-const { prev, next } = Astro.props;
+const {
+  prev,
+  next,
+  indexHref,
+  indexLabel = "all writing",
+  entryBasePath = "writing",
+  navLabel = "adjacent writing",
+} = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const resolvedIndexHref = indexHref ?? `${base}/writing/`;
+const normalizedEntryBase = entryBasePath.replace(/^\/|\/$/g, "");
 ---
 
 <footer class="ef">
@@ -15,16 +30,16 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     <div class="reading">
       <div class="ef__ornament">❡</div>
       <p class="ef__sign">
-        end of entry. <a class="ef__sign-link" href={`${base}/writing/`}>all writing</a>.
+        end of entry. <a class="ef__sign-link" href={resolvedIndexHref}>{indexLabel}</a>.
       </p>
     </div>
 
     <hr class="hairline ef__rule" />
 
-    <nav class="ef__nav" aria-label="adjacent writing">
+    <nav class="ef__nav" aria-label={navLabel}>
       <div class="ef__nav-cell ef__nav-cell--prev">
         {prev ? (
-          <a href={`${base}/writing/${prev.id}/`}>
+          <a href={`${base}/${normalizedEntryBase}/${prev.id}/`}>
             <span class="meta">← previous</span>
             <span class="ef__nav-title">{prev.data.title}</span>
             <time class="mono">{formatEntryDate(prev.data.date)}</time>
@@ -38,7 +53,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       </div>
       <div class="ef__nav-cell ef__nav-cell--next">
         {next ? (
-          <a href={`${base}/writing/${next.id}/`}>
+          <a href={`${base}/${normalizedEntryBase}/${next.id}/`}>
             <span class="meta">next →</span>
             <span class="ef__nav-title">{next.data.title}</span>
             <time class="mono">{formatEntryDate(next.data.date)}</time>
